@@ -1,5 +1,4 @@
 from picamera2 import Picamera2
-import time
 
 class Capture:
     def __init__(self, width = 640, height = 480):
