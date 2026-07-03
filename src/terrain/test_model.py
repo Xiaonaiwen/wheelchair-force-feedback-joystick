@@ -156,14 +156,7 @@ def evaluate_model():
     plot_path = save_dir / "confusion_matrix.png"
     plot_confusion_matrix(confusion, class_names, plot_path)
     print(f"\nSaved confusion matrix to: {plot_path}")
-    
-    print("\nPer-class accuracy:")
-    for i, class_name in enumerate(class_names):
-        class_total = confusion[i].sum()
-        class_correct = confusion[i, i]
-        class_acc = class_correct / class_total if class_total > 0 else 0.0
-        print(f"{class_name:20s} {class_acc:.4f} ({class_correct}/{class_total})")
-
+     
     print("\nMost common misclassification:")
     for i, true_name in enumerate(class_names):
         row = confusion[i].copy()

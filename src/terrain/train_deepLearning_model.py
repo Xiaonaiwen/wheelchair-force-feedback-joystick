@@ -5,13 +5,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import Counter
 
 CLASS_TO_IDX = {}
 IDX_TO_CLASS = {}
 
 IMAGE_SIZE = 224
 BATCH_SIZE = 32
-NUM_EPOCHS = 5
+NUM_EPOCHS = 10
 LEARNING_RATE = 0.001
 
 
@@ -92,9 +93,34 @@ def train_model(dataset):
     model = TerrainCNN(num_classes).to(device)
     model.train()
 
-    criterion = nn.CrossEntropyLoss()
+    # --------------------------------------------------
+    # Class weights for imbalanced data
+    # --------------------------------------------------
+    labels = [label for _, label in dataset]
+    counts = Counter(labels)
+
+    print("Class counts:")
+    for i in range(num_classes):
+        print(f"{IDX_TO_CLASS[i]:20s}: {counts[i]}")
+
+    class_weights = torch.tensor(
+        [1.0 / counts[i] for i in range(num_classes)],
+        dtype=torch.float32
+    ).to(device)
+
+    # Normalize weights so the average weight is ~1
+    class_weights = class_weights / class_weights.sum() * num_classes
+
+    print("\nClass weights:")
+    for i in range(num_classes):
+        print(f"{IDX_TO_CLASS[i]:20s}: {class_weights[i].item():.4f}")
+
+    criterion = nn.CrossEntropyLoss(weight=class_weights)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
+    # --------------------------------------------------
+    # Training loop
+    # --------------------------------------------------
     for epoch in range(NUM_EPOCHS):
         random.shuffle(dataset)
 
@@ -133,7 +159,11 @@ def train_model(dataset):
         epoch_loss = running_loss / running_total
         epoch_acc = running_correct / running_total
 
-        print(f"Epoch {epoch + 1}/{NUM_EPOCHS} | Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f}")
+        print(
+            f"Epoch {epoch + 1}/{NUM_EPOCHS} | "
+            f"Loss: {epoch_loss:.4f} | "
+            f"Acc: {epoch_acc:.4f}"
+        )
 
     return model
 

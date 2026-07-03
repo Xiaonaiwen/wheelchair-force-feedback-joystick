@@ -13,35 +13,62 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET_SIZE = (224, 224)
 TRAIN_RATIO = 0.8
 SEED = 42
-FORCE_REBUILD = True   # set False after everything works
+FORCE_REBUILD = True  # set False after everything works
 
-GTOS_OUT = ROOT / "datasets" / "processed" / "GTOS-Mobile-224"
+GTOS_RAW_NAME = "iSolver-AI/GTOS-Mobile"
 EXTREME_RAW = ROOT / "datasets" / "Extreme-Road-Image-Dataset"
-EXTREME_OUT = ROOT / "datasets" / "processed" / "Extreme-Road-224"
 COMBINED_OUT = ROOT / "datasets" / "wheelchair_combined"
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
-# Final labels in the combined dataset
-CLASS_MAP = {
-    "asphalt": ["asphalt", "stone_asphalt"],
-    "brick": ["brick", "stone_brick"],
-    "cement": ["cement", "stone_cement"],
-    "grass": ["grass", "turf", "painting_turf"],
-    "pebble": ["pebble"],
-    "sand": ["sand"],
-    "soil": ["soil"],
-    "metal_cover": ["metal_cover"],
-    "limestone": ["large_limestone", "small_limestone"],
-    "wood_chips": ["wood_chips"],
+FINAL_CLASSES = [
+    "high",
+    "medium_high",
+    "medium_low",
+    "natural_ground",
+    "low",
+    "very_low",
+    "pebble",
+    "wet_asphalt",
+]
 
-    "ice": ["1-ice surface", "2-rough ice surface"],
-    "snow": ["3-loose snow surface"],
-    "muddy_snow": ["4-muddy road after snow"],
-    "waterlogged_pavement": ["5-waterlogged pavement"],
-    "wet_asphalt": ["6-semi-impregnated asphalt pavement"],
+# GTOS-Mobile source labels -> final labels
+GTOS_TO_FINAL = {
+    # High
+    "asphalt": "high",
+    "stone asphalt": "high",
+    "cement": "high",
+    "stone cement": "high",
+
+    # Medium High
+    "brick": "medium_high",
+    "stone brick": "medium_high",
+    "large limestone": "medium_high",
+    "small limestone": "medium_high",
+
+    # Medium Low
+    "sand": "medium_low",
+    "wood chips": "medium_low",
+
+    # Natural Ground
+    "grass": "natural_ground",
+    "turf": "natural_ground",
+    "painting turf": "natural_ground",
+    "soil": "natural_ground",
+
+    # Special
+    "pebble": "pebble",
 }
-# =========================
+
+# Extreme Road source labels -> final labels
+EXTREME_TO_FINAL = {
+    "1 ice surface": "very_low",
+    "2 rough ice surface": "very_low",
+    "3 loose snow surface": "very_low",
+    "4 muddy road after snow": "very_low",
+    "5 waterlogged pavement": "low",
+    "6 semi impregnated asphalt pavement": "wet_asphalt",
+}
 
 
 def normalize(name: str) -> str:
@@ -105,74 +132,53 @@ def save_resized(img_path: Path, out_path: Path):
         img.save(out_path, quality=95)
 
 
-def export_gtos():
-    if maybe_skip(GTOS_OUT):
-        print("GTOS already processed. Skipping.")
-        return
-
-    print("Loading GTOS-Mobile...")
-    dataset = load_dataset("iSolver-AI/GTOS-Mobile")
-
-    reverse_map = {}
-    for out_class, in_classes in CLASS_MAP.items():
-        for in_class in in_classes:
-            reverse_map[normalize(in_class)] = out_class
-
-    clear_dir(GTOS_OUT)
+def ensure_final_dirs():
     for split in ["train", "test"]:
-        for out_class in CLASS_MAP.keys():
-            (GTOS_OUT / split / out_class).mkdir(parents=True, exist_ok=True)
+        for cls in FINAL_CLASSES:
+            (COMBINED_OUT / split / cls).mkdir(parents=True, exist_ok=True)
+
+
+def export_gtos_into_combined():
+    print("Loading GTOS-Mobile...")
+    dataset = load_dataset(GTOS_RAW_NAME)
+
+    class_names = dataset["train"].features["label"].names
+    reverse_map = {normalize(k): v for k, v in GTOS_TO_FINAL.items()}
 
     for split in ["train", "test"]:
         copied = 0
         skipped = 0
-        class_names = dataset[split].features["label"].names
 
         for i, sample in enumerate(dataset[split]):
-            img = sample["image"].convert("RGB")
             label_name = normalize(class_names[sample["label"]])
 
             if label_name not in reverse_map:
                 skipped += 1
                 continue
 
-            out_class = reverse_map[label_name]
+            final_class = reverse_map[label_name]
+            img = sample["image"].convert("RGB")
             img = img.resize(TARGET_SIZE, Image.Resampling.LANCZOS)
 
-            save_name = f"{split}_{i:06d}.jpg"
-            save_path = GTOS_OUT / split / out_class / save_name
-            img.save(save_path, quality=95)
+            out_name = f"GTOS_{split}_{i:06d}.jpg"
+            out_path = COMBINED_OUT / split / final_class / out_name
+            img.save(out_path, quality=95)
             copied += 1
 
-        print(f"GTOS {split}: copied {copied}, skipped {skipped}")
+        print(f"GTOS {split}: copied={copied}, skipped={skipped}")
 
 
-def export_extreme_road():
-    if maybe_skip(EXTREME_OUT):
-        print("Extreme Road already processed. Skipping.")
-        return
-
+def export_extreme_into_combined():
     if not EXTREME_RAW.exists():
         raise FileNotFoundError(f"Extreme Road dataset folder not found: {EXTREME_RAW}")
 
     unzip_all_zips(EXTREME_RAW)
 
-    clear_dir(EXTREME_OUT)
-    for split in ["train", "test"]:
-        for out_class in ["ice", "snow", "muddy_snow", "waterlogged_pavement", "wet_asphalt"]:
-            (EXTREME_OUT / split / out_class).mkdir(parents=True, exist_ok=True)
-
     rng = random.Random(SEED)
+    reverse_map = {normalize(k): v for k, v in EXTREME_TO_FINAL.items()}
 
-    extreme_map = {
-        "ice": ["1-Ice Surface", "2-Rough Ice Surface"],
-        "snow": ["3-Loose snow surface"],
-        "muddy_snow": ["4-Muddy Road After Snow"],
-        "waterlogged_pavement": ["5-Waterlogged Pavement"],
-        "wet_asphalt": ["6-Semi-impregnated Asphalt Pavement"],
-    }
-
-    for out_class, source_names in extreme_map.items():
+    for final_class in ["very_low", "low", "wet_asphalt"]:
+        source_names = [k for k, v in EXTREME_TO_FINAL.items() if v == final_class]
         all_images = []
 
         for source_name in source_names:
@@ -185,7 +191,7 @@ def export_extreme_road():
             all_images.extend(collect_images(src_folder))
 
         if not all_images:
-            print(f"No images found for {out_class}")
+            print(f"No images found for {final_class}")
             continue
 
         rng.shuffle(all_images)
@@ -194,55 +200,28 @@ def export_extreme_road():
         test_images = all_images[split_idx:]
 
         for idx, img_path in enumerate(train_images):
-            out_path = EXTREME_OUT / "train" / out_class / f"{out_class}_{idx:06d}.jpg"
+            out_path = COMBINED_OUT / "train" / final_class / f"EXT_{final_class}_{idx:06d}.jpg"
             save_resized(img_path, out_path)
 
         for idx, img_path in enumerate(test_images):
-            out_path = EXTREME_OUT / "test" / out_class / f"{out_class}_{idx:06d}.jpg"
+            out_path = COMBINED_OUT / "test" / final_class / f"EXT_{final_class}_{idx:06d}.jpg"
             save_resized(img_path, out_path)
 
-        print(f"Extreme Road {out_class}: train={len(train_images)}, test={len(test_images)}")
+        print(f"Extreme Road {final_class}: train={len(train_images)}, test={len(test_images)}")
 
 
-def combine_datasets():
+def main():
     if maybe_skip(COMBINED_OUT):
         print("Combined dataset already exists. Skipping.")
         return
 
     clear_dir(COMBINED_OUT)
-    for split in ["train", "test"]:
-        for out_class in CLASS_MAP.keys():
-            (COMBINED_OUT / split / out_class).mkdir(parents=True, exist_ok=True)
+    ensure_final_dirs()
 
-    # GTOS
-    for split in ["train", "test"]:
-        src_split = GTOS_OUT / split
-        if src_split.exists():
-            for class_dir in src_split.iterdir():
-                if class_dir.is_dir() and class_dir.name in CLASS_MAP:
-                    for img_path in class_dir.iterdir():
-                        if img_path.is_file():
-                            dst = COMBINED_OUT / split / class_dir.name / f"GTOS_{img_path.name}"
-                            shutil.copy2(img_path, dst)
-
-    # Extreme Road
-    for split in ["train", "test"]:
-        src_split = EXTREME_OUT / split
-        if src_split.exists():
-            for class_dir in src_split.iterdir():
-                if class_dir.is_dir() and class_dir.name in CLASS_MAP:
-                    for img_path in class_dir.iterdir():
-                        if img_path.is_file():
-                            dst = COMBINED_OUT / split / class_dir.name / f"EXT_{img_path.name}"
-                            shutil.copy2(img_path, dst)
+    export_gtos_into_combined()
+    export_extreme_into_combined()
 
     print(f"Combined dataset saved to: {COMBINED_OUT}")
-
-
-def main():
-    export_gtos()
-    export_extreme_road()
-    combine_datasets()
 
 
 if __name__ == "__main__":
