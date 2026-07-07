@@ -108,8 +108,10 @@ def evaluate_model():
 
     # If idx_to_class was saved as a dict with string keys, convert safely.
     if isinstance(idx_to_class, dict):
-        class_names = [idx_to_class[str(i)] if str(i) in idx_to_class else idx_to_class[i]
-                       for i in range(len(class_to_idx))]
+        class_names = [
+            idx_to_class[str(i)] if str(i) in idx_to_class else idx_to_class[i]
+            for i in range(len(class_to_idx))
+        ]
     else:
         class_names = list(idx_to_class)
 
@@ -119,11 +121,28 @@ def evaluate_model():
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
+    # --------------------------------------------------
+    # Representative friction coefficient for each class
+    # --------------------------------------------------
+    class_to_mu = {
+        "high": 0.80,            # midpoint of 0.70–0.90
+        "medium_high": 0.625,    # midpoint of 0.55–0.70
+        "medium_low": 0.35,      # midpoint of 0.20–0.50
+        "natural_ground": 0.40,  # midpoint of 0.20–0.60
+        "low": 0.20,             # about 0.20
+        "very_low": 0.085,       # midpoint of 0.02–0.15
+        "pebble": 0.60,          # proxy value
+        "wet_asphalt": 0.50,     # midpoint of 0.25–0.75
+    }
+
     num_classes = len(class_to_idx)
     confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
 
     correct = 0
     total = 0
+
+    mu_true_list = []
+    mu_pred_list = []
 
     with torch.no_grad():
         for image_path, label in test_dataset:
@@ -139,10 +158,29 @@ def evaluate_model():
                 correct += 1
             total += 1
 
+            true_class_name = class_names[true_label]
+            pred_class_name = class_names[pred_label]
+
+            # Convert class -> representative friction coefficient
+            true_mu = class_to_mu.get(true_class_name, 0.0)
+            pred_mu = class_to_mu.get(pred_class_name, 0.0)
+
+            mu_true_list.append(true_mu)
+            mu_pred_list.append(pred_mu)
+
     accuracy = correct / total if total > 0 else 0.0
+
+    mu_true_arr = np.array(mu_true_list, dtype=np.float32)
+    mu_pred_arr = np.array(mu_pred_list, dtype=np.float32)
+
+    mse = np.mean((mu_pred_arr - mu_true_arr) ** 2)
+    mre = np.mean(np.abs(mu_pred_arr - mu_true_arr) / np.maximum(np.abs(mu_true_arr), 1e-8))
+
     print(f"Test Accuracy: {accuracy:.4f}")
     print(f"Test Samples: {total}")
     print(f"Classes: {len(class_names)}")
+    print(f"MSE: {mse:.4f}")
+    print(f"MRE: {mre:.4f}")
 
     print("\nPer-class accuracy:")
     for i, class_name in enumerate(class_names):
@@ -156,7 +194,7 @@ def evaluate_model():
     plot_path = save_dir / "confusion_matrix.png"
     plot_confusion_matrix(confusion, class_names, plot_path)
     print(f"\nSaved confusion matrix to: {plot_path}")
-     
+
     print("\nMost common misclassification:")
     for i, true_name in enumerate(class_names):
         row = confusion[i].copy()
@@ -171,6 +209,7 @@ def evaluate_model():
         count = row[pred_idx]
 
         print(f"{true_name:20s} -> {pred_name:20s} ({count})")
+
     print("\nTop 3 misclassifications:")
     for i, true_name in enumerate(class_names):
         row = confusion[i].copy()
@@ -182,7 +221,6 @@ def evaluate_model():
         for idx in top3:
             if row[idx] > 0:
                 print(f"    {class_names[idx]:20s} {row[idx]}")
-
 
 
 def main():

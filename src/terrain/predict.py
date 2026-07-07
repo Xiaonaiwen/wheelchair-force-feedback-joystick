@@ -76,6 +76,7 @@ def predict_image(image_path):
 
     print(f"Predicted class: {pred_class}")
     print(f"Confidence: {confidence:.4f}")
+    return pred_class, confidence
 
 
 def main():
