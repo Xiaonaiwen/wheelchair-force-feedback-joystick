@@ -1,18 +1,16 @@
 from picamera2 import Picamera2
+from time import perf_counter
 
-class Capture:
+class Camera:
     def __init__(self, width = 640, height = 480):
         self.camera = Picamera2()
-        self.width = width
-        self.height = height
-
-
-    def start(self):
         config = self.camera.create_preview_configuration(
-            main={"size": (self.width, self.height), "format": "RGB888"},
+            main={"size": (width, height), "format": "RGB888"},
         )        
         self.camera.configure(config)
 
+
+    def start(self):
         self.camera.start()
 
 
@@ -20,5 +18,7 @@ class Capture:
         self.camera.stop()
 
 
-    def capture_frame(self):
-        return self.camera.capture_array("main")
+    def read(self):
+        frame = self.camera.capture_array("main")
+        timestamp = perf_counter()
+        return frame, timestamp

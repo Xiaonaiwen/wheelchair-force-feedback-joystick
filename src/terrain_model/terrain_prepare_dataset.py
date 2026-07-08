@@ -13,11 +13,11 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET_SIZE = (224, 224)
 TRAIN_RATIO = 0.8
 SEED = 42
-FORCE_REBUILD = True  # set False after everything works
+FORCE_REBUILD = False  # set False after everything works
 
 GTOS_RAW_NAME = "iSolver-AI/GTOS-Mobile"
-EXTREME_RAW = ROOT / "datasets" / "Extreme-Road-Image-Dataset"
-COMBINED_OUT = ROOT / "datasets" / "wheelchair_combined"
+EXTREME_RAW = ROOT / "datasets" / "raw" / "Extreme Road Image Dataset"
+COMBINED_OUT = ROOT / "datasets" / "processed" / "terrain classifier"
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 

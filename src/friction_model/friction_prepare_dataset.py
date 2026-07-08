@@ -3,6 +3,7 @@ import csv
 import random
 import shutil
 import zipfile
+from huggingface_hub import snapshot_download
 
 from datasets import load_dataset
 from PIL import Image
@@ -14,11 +15,11 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET_SIZE = (224, 224)
 TRAIN_RATIO = 0.8
 SEED = 42
-FORCE_REBUILD = True  # set False once everything works
+FORCE_REBUILD = False  # set False once everything works
 
-GTOS_RAW_NAME = "iSolver-AI/GTOS-Mobile"
-EXTREME_RAW = ROOT / "datasets" / "Extreme-Road-Image-Dataset"
-OUT_ROOT = ROOT / "datasets" / "processed" / "friction_regression"
+GTOS_NAME = "iSolver-AI/GTOS-Mobile"
+EXTREME_RAW = ROOT / "datasets" / "raw" / "Extreme Road Image Dataset"
+OUT_ROOT = ROOT / "datasets" / "processed" / "friction regression"
 
 VALID_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -74,7 +75,7 @@ EXTREME_FOLDER_TO_LABEL = {
 }
 
 
-def normalize(name: str) -> str:
+def normalize(name):
     return (
         name.lower()
         .strip()
@@ -84,17 +85,17 @@ def normalize(name: str) -> str:
     )
 
 
-def clear_dir(path: Path):
+def clear_dir(path):
     if path.exists():
         shutil.rmtree(path)
     path.mkdir(parents=True, exist_ok=True)
 
 
-def maybe_skip(path: Path) -> bool:
+def maybe_skip(path):
     return path.exists() and not FORCE_REBUILD
 
 
-def unzip_all_zips(root: Path):
+def unzip_all_zips(root):
     for zip_path in root.rglob("*.zip"):
         extract_dir = zip_path.with_suffix("")
         if extract_dir.exists():
@@ -155,8 +156,7 @@ def write_csv(rows: list[dict], csv_path: Path):
 
 def process_gtos():
     print("Loading GTOS-Mobile...")
-    dataset = load_dataset(GTOS_RAW_NAME)
-
+    dataset = load_dataset(GTOS_NAME)
     class_names = dataset["train"].features["label"].names
 
     out_rows = {"train": [], "test": []}

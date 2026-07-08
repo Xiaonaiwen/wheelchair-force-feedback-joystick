@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from train_model import FrictionCNN, IMAGE_SIZE
+from friction_model.friction_train_model import FrictionCNN, IMAGE_SIZE
 
 
 def get_project_root():
