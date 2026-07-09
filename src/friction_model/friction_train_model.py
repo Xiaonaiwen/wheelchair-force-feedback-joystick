@@ -113,8 +113,8 @@ def train_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     project_root = get_project_root()
-    train_csv = project_root / "datasets" / "processed" / "friction_regression" / "train" / "labels.csv"
-    test_csv = project_root / "datasets" / "processed" / "friction_regression" / "test" / "labels.csv"
+    train_csv = project_root / "datasets" / "processed" / "friction regression" / "train" / "labels.csv"
+    test_csv = project_root / "datasets" / "processed" / "friction regression" / "test" / "labels.csv"
 
     train_dataset = FrictionDataset(train_csv)
     test_dataset = FrictionDataset(test_csv)
@@ -135,17 +135,42 @@ def train_model():
 
     model = FrictionCNN().to(device)
 
-    # SmoothL1 is a good choice because your coefficients come from estimated ranges,
-    # not exact measurements.
     criterion = nn.SmoothL1Loss()
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
-    best_test_mae = float("inf")
-    save_dir = project_root / "models"
-    save_dir.mkdir(parents=True, exist_ok=True)
-    save_path = save_dir / "friction_cnn_regression.pth"
+    model_dir = project_root / "models"
+    model_dir.mkdir(parents=True, exist_ok=True)
 
-    for epoch in range(NUM_EPOCHS):
+    normal_save_path = model_dir / "friction_cnn.pth"
+    best_save_path = model_dir / "friction_cnn_best.pth"
+
+    best_test_mae = float("inf")
+    start_epoch = 0
+
+    # Resume from the normal/latest checkpoint if it exists
+    if normal_save_path.exists():
+        checkpoint = torch.load(normal_save_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        start_epoch = checkpoint.get("epoch", -1) + 1
+        best_test_mae = checkpoint.get("best_test_mae", float("inf"))
+        print(f"Resumed from normal checkpoint: {normal_save_path}")
+
+    def save_checkpoint(path, epoch, test_mae):
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "image_size": IMAGE_SIZE,
+                "batch_size": BATCH_SIZE,
+                "learning_rate": LEARNING_RATE,
+                "best_test_mae": test_mae,
+            },
+            path,
+        )
+
+    for epoch in range(start_epoch, NUM_EPOCHS):
         model.train()
 
         running_loss = 0.0
@@ -185,19 +210,22 @@ def train_model():
             f"Test MAE: {test_mae:.4f}"
         )
 
+        # Always save the latest checkpoint
+        save_checkpoint(normal_save_path, epoch, best_test_mae)
+
+        # Save the best checkpoint when test MAE improves
         if test_mae < best_test_mae:
             best_test_mae = test_mae
-            torch.save(
-                {
-                    "model_state_dict": model.state_dict(),
-                    "image_size": IMAGE_SIZE,
-                    "batch_size": BATCH_SIZE,
-                    "learning_rate": LEARNING_RATE,
-                    "best_test_mae": best_test_mae,
-                },
-                save_path,
-            )
-            print(f"Saved best model to: {save_path}")
+            save_checkpoint(best_save_path, epoch, best_test_mae)
+            print(f"Saved best model to: {best_save_path}")
+
+            # Update the normal checkpoint too, so it stores the new best_test_mae
+            save_checkpoint(normal_save_path, epoch, best_test_mae)
+
+    # Reload the best model before returning
+    if best_save_path.exists():
+        checkpoint = torch.load(best_save_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
 
     return model
 

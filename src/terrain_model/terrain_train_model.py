@@ -1,6 +1,7 @@
 from pathlib import Path
 from PIL import Image
 import numpy as np
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,7 +13,7 @@ IDX_TO_CLASS = {}
 IMAGE_SIZE = 224
 BATCH_SIZE = 32
 NUM_EPOCHS = 20
-LEARNING_RATE = 0.001
+LEARNING_RATE = 1e-3
 
 
 def get_project_root():
@@ -22,7 +23,7 @@ def get_project_root():
 def create_class_to_idx():
     global CLASS_TO_IDX, IDX_TO_CLASS
 
-    train_dir = get_project_root() / "datasets" / "wheelchair_combined" / "train"
+    train_dir = get_project_root() / "datasets" / "processed" / "terrain classifier" / "train"
 
     classes = sorted([d.name for d in train_dir.iterdir() if d.is_dir()])
 
@@ -31,7 +32,7 @@ def create_class_to_idx():
 
 
 def create_train_dataset():
-    TRAIN_DIR = get_project_root() / "datasets" / "wheelchair_combined" / "train"
+    TRAIN_DIR = get_project_root() / "datasets" / "processed" / "terrain classifier" / "train"
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
     dataset = []
@@ -59,7 +60,7 @@ def load_image(image_path):
     return image
 
 def create_test_dataset():
-    TEST_DIR = get_project_root() / "datasets" / "wheelchair_combined" / "test"
+    TEST_DIR = get_project_root() / "datasets" / "processed" / "terrain classifier" / "test"
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
     dataset = []
@@ -103,6 +104,7 @@ class TerrainCNN(nn.Module):
         return x
 
 
+
 def train_model(train_dataset, test_dataset):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -133,20 +135,37 @@ def train_model(train_dataset, test_dataset):
     project_root = get_project_root()
     model_dir = project_root / "models"
     model_dir.mkdir(parents=True, exist_ok=True)
-    save_path = model_dir / "terrain_cnn_best.pth"
+
+    latest_path = model_dir / "terrain_cnn.pth"
+    best_path = model_dir / "terrain_cnn_best.pth"
 
     start_epoch = 0
     best_test_loss = float("inf")
     best_test_acc = 0.0
 
-    if save_path.exists():
-        checkpoint = torch.load(save_path, map_location=device)
+    # Resume from latest checkpoint if it exists
+    if latest_path.exists():
+        checkpoint = torch.load(latest_path, map_location=device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_epoch = checkpoint.get("epoch", -1) + 1
         best_test_loss = checkpoint.get("best_test_loss", float("inf"))
         best_test_acc = checkpoint.get("best_test_acc", 0.0)
-        print(f"Resumed from checkpoint: {save_path}")
+        print(f"Resumed from latest checkpoint: {latest_path}")
+
+    def save_checkpoint(path, epoch, test_loss, test_acc):
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "best_test_loss": test_loss,
+                "best_test_acc": test_acc,
+                "class_to_idx": CLASS_TO_IDX,
+                "idx_to_class": IDX_TO_CLASS,
+            },
+            path,
+        )
 
     def evaluate(test_dataset):
         model.eval()
@@ -156,9 +175,7 @@ def train_model(train_dataset, test_dataset):
         total = 0
 
         with torch.no_grad():
-
             for start in range(0, len(test_dataset), BATCH_SIZE):
-
                 batch = test_dataset[start:start + BATCH_SIZE]
 
                 batch_images = []
@@ -170,14 +187,10 @@ def train_model(train_dataset, test_dataset):
                     batch_labels.append(label)
 
                 batch_images = torch.stack(batch_images).to(device)
-                batch_labels = torch.tensor(
-                    batch_labels,
-                    dtype=torch.long
-                ).to(device)
+                batch_labels = torch.tensor(batch_labels, dtype=torch.long).to(device)
 
                 outputs = model(batch_images)
                 loss = criterion(outputs, batch_labels)
-
                 preds = outputs.argmax(dim=1)
 
                 total_correct += (preds == batch_labels).sum().item()
@@ -186,11 +199,12 @@ def train_model(train_dataset, test_dataset):
 
         avg_loss = total_loss / total
         avg_acc = total_correct / total
-
         return avg_loss, avg_acc
 
     for epoch in range(start_epoch, NUM_EPOCHS):
         model.train()
+
+        random.shuffle(train_dataset)  # shuffle once per epoch
 
         running_loss = 0.0
         running_correct = 0
@@ -211,10 +225,8 @@ def train_model(train_dataset, test_dataset):
             batch_labels = torch.tensor(batch_labels, dtype=torch.long).to(device)
 
             optimizer.zero_grad()
-
             outputs = model(batch_images)
             loss = criterion(outputs, batch_labels)
-
             loss.backward()
             optimizer.step()
 
@@ -235,26 +247,25 @@ def train_model(train_dataset, test_dataset):
             f"Test Loss: {test_loss:.4f} | Test Acc: {test_acc:.4f}"
         )
 
+        # Always save latest checkpoint
+        save_checkpoint(latest_path, epoch, best_test_loss, best_test_acc)
+
+        # Save best checkpoint when test loss improves
         if test_loss < best_test_loss:
             best_test_loss = test_loss
             best_test_acc = test_acc
+            save_checkpoint(best_path, epoch, best_test_loss, best_test_acc)
+            print(f"Saved best model to: {best_path}")
 
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "best_test_loss": best_test_loss,
-                    "best_test_acc": best_test_acc,
-                    "class_to_idx": CLASS_TO_IDX,
-                    "idx_to_class": IDX_TO_CLASS,
-                },
-                save_path,
-            )
-            print(f"Saved best model to: {save_path}")
+            # Keep latest checkpoint in sync with the new best metrics
+            save_checkpoint(latest_path, epoch, best_test_loss, best_test_acc)
 
     print(f"\nBest Test Loss: {best_test_loss:.4f}")
     print(f"Best Test Acc : {best_test_acc:.4f}")
+
+    if best_path.exists():
+        checkpoint = torch.load(best_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
 
     return model
 

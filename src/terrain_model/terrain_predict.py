@@ -1,6 +1,5 @@
 from pathlib import Path
-import sys
-from PIL import Image
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -40,21 +39,26 @@ def get_project_root():
     return Path(__file__).resolve().parents[2]
 
 
-def load_image(image_path):
-    image = Image.open(image_path).convert("RGB")
-    image = image.resize((IMAGE_SIZE, IMAGE_SIZE))
-    image = torch.from_numpy(np.array(image)).float() / 255.0
-    image = image.permute(2, 0, 1)  # HWC -> CHW
-    return image
-
-
 def load_checkpoint():
     checkpoint_path = get_project_root() / "models" / "terrain_cnn.pth"
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    return checkpoint
+    return torch.load(checkpoint_path, map_location="cpu")
 
 
-def predict_image(image_path):
+def frame_to_tensor(frame):
+    """
+    frame: RGB NumPy array with shape (224, 224, 3)
+    """
+    frame = np.asarray(frame)
+
+    if frame.shape != (IMAGE_SIZE, IMAGE_SIZE, 3):
+        raise ValueError(f"Expected frame shape {(IMAGE_SIZE, IMAGE_SIZE, 3)}, got {frame.shape}")
+
+    frame = torch.from_numpy(frame).float() / 255.0
+    frame = frame.permute(2, 0, 1)   # HWC -> CHW
+    return frame.unsqueeze(0)        # add batch dimension
+
+
+def predict_frame(frame):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoint = load_checkpoint()
@@ -65,7 +69,7 @@ def predict_image(image_path):
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    image = load_image(image_path).unsqueeze(0).to(device)
+    image = frame_to_tensor(frame).to(device)
 
     with torch.no_grad():
         outputs = model(image)
@@ -77,21 +81,3 @@ def predict_image(image_path):
     print(f"Predicted class: {pred_class}")
     print(f"Confidence: {confidence:.4f}")
     return pred_class, confidence
-
-
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python predict.py path/to/image.jpg")
-        return
-
-    image_path = Path(sys.argv[1])
-
-    if not image_path.exists():
-        print(f"Image not found: {image_path}")
-        return
-
-    predict_image(image_path)
-
-
-if __name__ == "__main__":
-    main()

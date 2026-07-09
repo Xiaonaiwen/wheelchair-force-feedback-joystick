@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from friction_model.friction_train_model import FrictionCNN, IMAGE_SIZE
+from friction_train_model import FrictionCNN, IMAGE_SIZE
 
 
 def get_project_root():
@@ -32,13 +32,13 @@ def main():
         root
         / "datasets"
         / "processed"
-        / "friction_regression"
+        / "friction regression"
         / "test"
         / "labels.csv"
     )
 
     checkpoint = torch.load(
-        root / "models" / "friction_cnn_regression.pth", 
+        root / "models" / "friction_cnn_best.pth", 
         map_location=device,
     )
 

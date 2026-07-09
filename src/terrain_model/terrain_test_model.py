@@ -40,7 +40,7 @@ def get_project_root():
 
 
 def get_test_dir():
-    return get_project_root() / "datasets" / "wheelchair_combined" / "test"
+    return get_project_root() / "datasets" / "processed" / "terrain classifier" / "test"
 
 
 def load_image(image_path):
@@ -52,7 +52,7 @@ def load_image(image_path):
 
 
 def load_checkpoint():
-    checkpoint_path = get_project_root() / "models" / "terrain_cnn.pth"
+    checkpoint_path = get_project_root() / "models" / "terrain_cnn_best.pth"
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     return checkpoint
 
@@ -81,22 +81,6 @@ def create_test_dataset(class_to_idx):
 
     return dataset
 
-
-def plot_confusion_matrix(cm, class_names, save_path):
-    plt.figure(figsize=(12, 10))
-    plt.imshow(cm, interpolation="nearest")
-    plt.title("Confusion Matrix")
-    plt.colorbar()
-    tick_marks = np.arange(len(class_names))
-    plt.xticks(tick_marks, class_names, rotation=45, ha="right")
-    plt.yticks(tick_marks, class_names)
-
-    plt.ylabel("True Label")
-    plt.xlabel("Predicted Label")
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close()
 
 
 def evaluate_model():
@@ -188,12 +172,6 @@ def evaluate_model():
         class_correct = confusion[i, i]
         class_acc = class_correct / class_total if class_total > 0 else 0.0
         print(f"{class_name:20s} {class_acc:.4f}  ({class_correct}/{class_total})")
-
-    save_dir = get_project_root() / "results"
-    save_dir.mkdir(exist_ok=True)
-    plot_path = save_dir / "confusion_matrix.png"
-    plot_confusion_matrix(confusion, class_names, plot_path)
-    print(f"\nSaved confusion matrix to: {plot_path}")
 
     print("\nMost common misclassification:")
     for i, true_name in enumerate(class_names):
