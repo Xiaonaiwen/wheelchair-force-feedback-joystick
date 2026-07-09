@@ -113,11 +113,12 @@ class Optical_Flow:
         return distance / time
 
 
-    def slip_ratio(self, wheel_distance, ground_distance, time, radius = 10):
+    def slipRatio_and_currentAcceleration(self, wheel_distance, ground_distance, time, previous_ground_velocity, radius = 10):
         w = Optical_Flow.rotational_speed(wheel_distance, time, radius)
         v = Optical_Flow.ground_speed(ground_distance, time)
+
         s = (radius * w - v) / v
         slipping = s > self.slip_threshold
-        return s, slipping
+        return slipping,
 
 
