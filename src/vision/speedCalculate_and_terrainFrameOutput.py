@@ -2,7 +2,7 @@ import numpy as np
 import cv2 as cv
 
 class Optical_Flow:
-    def __init__(self, width = 640, height = 480, feature_frame_refresh = 5, wheel_error_threshold = 10, ground_error_threshold = 10, pixel_scale = 0.001, slip_threshold = 0.1):
+    def __init__(self, width = 640, height = 480, feature_frame_refresh = 5, wheel_error_threshold = 10, ground_error_threshold = 10, pixel_scale = 0.001, slip_threshold = 0):
         self.width = width
         self.height = height
         self.frame_count = feature_frame_refresh
@@ -79,6 +79,7 @@ class Optical_Flow:
             self.wheel_feature =  cv.goodFeaturesToTrack(current_frame, mask = self.wheel_mask, **self.wheel_feature_params)
             self.ground_feature = cv.goodFeaturesToTrack(current_frame, mask = self.ground_mask, **self.ground_feature_params)
             self.frame_count = 0
+            return False, -1, -1
         else:
             wheel_p, wheel_st, wheel_err = cv.calcOpticalFlowPyrLK(self.standard_frame, current_frame, self.wheel_feature, None, **self.wheel_lk_params)
             ground_p, ground_st, ground_err = cv.calcOpticalFlowPyrLK(self.standard_frame, current_frame, self.ground_feature, None, **self.ground_lk_params)
@@ -100,7 +101,7 @@ class Optical_Flow:
 
             self.frame_count += 1
 
-            return wheel_distance_move, ground_distance_move
+            return True, wheel_distance_move, ground_distance_move
 
 
     @staticmethod
@@ -113,12 +114,13 @@ class Optical_Flow:
         return distance / time
 
 
-    def slipRatio_and_currentAcceleration(self, wheel_distance, ground_distance, time, previous_ground_velocity, radius = 10):
-        w = Optical_Flow.rotational_speed(wheel_distance, time, radius)
-        v = Optical_Flow.ground_speed(ground_distance, time)
-
+    def slipRatio_and_currentAcceleration(self, wheel_distance, ground_distance, period, current_time, previous_ground_velocity, previous_time, radius = 10):
+        w = Optical_Flow.rotational_speed(wheel_distance, period, radius)
+        v = Optical_Flow.ground_speed(ground_distance, period)
         s = (radius * w - v) / v
         slipping = s > self.slip_threshold
-        return slipping,
+
+        a = (v - previous_ground_velocity) / (current_time - previous_time)
+        return slipping, a, v, w
 
 
