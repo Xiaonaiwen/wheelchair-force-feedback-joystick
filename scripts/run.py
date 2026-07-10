@@ -5,8 +5,8 @@ from src.vision.speedCalculate_and_terrainFrameOutput import Optical_Flow
 camera = Camera()
 optic = Optical_Flow()
 optic.default_set()
-optic.set_wheel_mask(0, 640, 0, 240)
-optic.set_ground_mask(0, 640, 240, 480)
+optic.set_wheel_mask(0, 640, 0, 480)
+optic.set_ground_mask(0, 640, 0, 480)
 camera.start()
 
 flag = True
