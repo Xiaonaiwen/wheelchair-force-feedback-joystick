@@ -1,5 +1,6 @@
 from src.camera.camera import Camera
 from src.vision.speedCalculate_and_terrainFrameOutput import Optical_Flow
+from src.friction_model.friction_predict import predict_frame
 
 # Initialize, set parameters and start the camera
 camera = Camera()
@@ -29,6 +30,8 @@ while flag:
         standardFrameTime = currentTime
         print("updating frame")
     terrainFrame = optic.get_terrain_frame(frame)
+    coefficient = predict_frame(terrainFrame)
+    print("coefficient: ", coefficient)
     count += 1
     if count == 20:
         flag = False
