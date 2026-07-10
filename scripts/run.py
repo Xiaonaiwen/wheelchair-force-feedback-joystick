@@ -10,6 +10,7 @@ optic.set_ground_mask(0, 640, 240, 480)
 camera.start()
 
 flag = True
+count = 0
 previousGroundVelocity = 0
 previousTime = 0
 while flag:
@@ -28,6 +29,9 @@ while flag:
         standardFrameTime = currentTime
         print("updating frame")
     terrainFrame = optic.get_terrain_frame(frame)
+    count += 1
+    if count == 20:
+        flag = False
 
 # stop the camera
 camera.stop()
