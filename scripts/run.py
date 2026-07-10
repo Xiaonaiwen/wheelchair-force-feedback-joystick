@@ -20,10 +20,10 @@ while flag:
         slip, a, v, w = optic.slipRatio_and_currentAcceleration(wheel_distance_move, ground_distance_move, period, currentTime, previousGroundVelocity, previousTime)
         previousTime = currentTime
         previousGroundVelocity = v
-        print("slip: " + slip)
-        print("acceleration: " + a)
-        print("velocity: "+ v)
-        print("angular velocity: " + w)
+        print("slip: " , slip)
+        print("acceleration: " , a)
+        print("velocity: ", v)
+        print("angular velocity: ", w)
     else:
         standardFrameTime = currentTime
         print("updating frame")
