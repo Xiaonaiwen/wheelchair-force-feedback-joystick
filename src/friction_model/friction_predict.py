@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import torch
 
-from friction_model.friction_train_model import FrictionCNN, IMAGE_SIZE
+from src.friction_model.friction_train_model import FrictionCNN, IMAGE_SIZE
 
 
 def get_project_root():

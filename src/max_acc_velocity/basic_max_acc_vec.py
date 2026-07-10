@@ -1,4 +1,4 @@
-from friction_model.friction_predict import predict_frame
+from src.friction_model.friction_predict import predict_frame
 import math
 
 
