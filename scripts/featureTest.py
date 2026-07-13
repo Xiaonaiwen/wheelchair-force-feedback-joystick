@@ -64,73 +64,72 @@ def main():
     mask = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
     frame_idx = 0
 
-    try:
-        while True:
-            frame = picam2.capture_array()
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
-            # If we lost points, detect new ones
-            if p0 is None or len(p0) < 10:
-                p0 = cv2.goodFeaturesToTrack(frame_gray, mask=None, **feature_params)
-                old_gray = frame_gray.copy()
+    num = 0
+    while num < 100:
+        frame = picam2.capture_array()
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
 
-                # Save the raw frame too
-                writer.write(frame_bgr)
-
-                if frame_idx % SAVE_EVERY_N_FRAMES == 0:
-                    cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), frame_bgr)
-
-                frame_idx += 1
-                continue
-
-            # Optical flow
-            p1, st, err = cv2.calcOpticalFlowPyrLK(
-                old_gray, frame_gray, p0, None, **lk_params
-            )
-
-            if p1 is None or st is None:
-                p0 = None
-                old_gray = frame_gray.copy()
-                continue
-
-            good_new = p1[st == 1]
-            good_old = p0[st == 1]
-
-            annotated = frame_bgr.copy()
-
-            # Draw tracks
-            for new, old in zip(good_new, good_old):
-                a, b = new.ravel()
-                c, d = old.ravel()
-                a, b, c, d = map(int, [a, b, c, d])
-
-                mask = cv2.line(mask, (a, b), (c, d), (0, 255, 0), 2)
-                annotated = cv2.circle(annotated, (a, b), 5, (0, 0, 255), -1)
-
-            output = cv2.add(annotated, mask)
-
-            # Save video frame
-            writer.write(output)
-
-            # Save a JPG every N frames
-            if frame_idx % SAVE_EVERY_N_FRAMES == 0:
-                cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), output)
-
-            # Update for next loop
+        # If we lost points, detect new ones
+        if p0 is None or len(p0) < 10:
+            p0 = cv2.goodFeaturesToTrack(frame_gray, mask=None, **feature_params)
             old_gray = frame_gray.copy()
-            p0 = good_new.reshape(-1, 1, 2)
+
+            # Save the raw frame too
+            writer.write(frame_bgr)
+
+            if frame_idx % SAVE_EVERY_N_FRAMES == 0:
+                cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), frame_bgr)
+
             frame_idx += 1
+            continue
 
-    except KeyboardInterrupt:
-        print("Stopped by user.")
+        # Optical flow
+        p1, st, err = cv2.calcOpticalFlowPyrLK(
+            old_gray, frame_gray, p0, None, **lk_params
+        )
 
-    finally:
-        writer.release()
-        picam2.stop()
-        cv2.destroyAllWindows()
-        print(f"Saved video: {video_path}")
-        print(f"Saved frames in: {frames_dir}")
+        if p1 is None or st is None:
+            p0 = None
+            old_gray = frame_gray.copy()
+            continue
+
+        good_new = p1[st == 1]
+        good_old = p0[st == 1]
+
+        annotated = frame_bgr.copy()
+
+        # Draw tracks
+        for new, old in zip(good_new, good_old):
+            a, b = new.ravel()
+            c, d = old.ravel()
+            a, b, c, d = map(int, [a, b, c, d])
+
+            mask = cv2.line(mask, (a, b), (c, d), (0, 255, 0), 2)
+            annotated = cv2.circle(annotated, (a, b), 5, (0, 0, 255), -1)
+
+        output = cv2.add(annotated, mask)
+
+        # Save video frame
+        writer.write(output)
+
+        # Save a JPG every N frames
+        if frame_idx % SAVE_EVERY_N_FRAMES == 0:
+            cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), output)
+
+        # Update for next loop
+        old_gray = frame_gray.copy()
+        p0 = good_new.reshape(-1, 1, 2)
+        frame_idx += 1
+
+        num += 1
+
+    writer.release()
+    picam2.stop()
+    cv2.destroyAllWindows()
+    print(f"Saved video: {video_path}")
+    print(f"Saved frames in: {frames_dir}")
 
 
 if __name__ == "__main__":
