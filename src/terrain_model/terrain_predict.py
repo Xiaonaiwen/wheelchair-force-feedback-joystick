@@ -40,7 +40,7 @@ def get_project_root():
 
 
 def load_checkpoint():
-    checkpoint_path = get_project_root() / "models" / "terrain_cnn.pth"
+    checkpoint_path = get_project_root() / "models" / "terrain_cnn_best.pth"
     return torch.load(checkpoint_path, map_location="cpu")
 
 

@@ -22,7 +22,7 @@ def predict_frame(frame):
     root = get_project_root()
 
     checkpoint = torch.load(
-        root / "models" / "friction_regression_cnn.pth",
+        root / "models" / "friction_cnn_best.pth",
         map_location=device,
     )
 

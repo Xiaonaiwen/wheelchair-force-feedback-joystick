@@ -1,6 +1,7 @@
 from src.camera.camera import Camera
 from src.vision.speedCalculate_and_terrainFrameOutput import Optical_Flow
 from src.friction_model.friction_predict import predict_frame
+import time
 
 # Initialize, set parameters and start the camera
 camera = Camera()
@@ -22,6 +23,7 @@ while flag:
         slip, a, v, w = optic.slipRatio_and_currentAcceleration(wheel_distance_move, ground_distance_move, period, currentTime, previousGroundVelocity, previousTime)
         previousTime = currentTime
         previousGroundVelocity = v
+        print("period", period)
         print("slip: " , slip)
         print("acceleration: " , a)
         print("velocity: ", v)
@@ -31,10 +33,10 @@ while flag:
         print("updating frame")
     terrainFrame = optic.get_terrain_frame(frame)
     coefficient = predict_frame(terrainFrame)
-    print("coefficient: ", coefficient)
     count += 1
     if count == 20:
         flag = False
+    time.sleep(1)
 
 # stop the camera
 camera.stop()
