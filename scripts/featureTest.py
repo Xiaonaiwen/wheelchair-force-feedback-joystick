@@ -66,7 +66,7 @@ def main():
 
 
     num = 0
-    while num < 1000:
+    while num < 100:
         frame = picam2.capture_array()
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
