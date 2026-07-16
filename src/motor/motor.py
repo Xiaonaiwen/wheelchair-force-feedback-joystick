@@ -42,12 +42,13 @@ class Left_Right_Motor():
         self.currentLimit = 910
         self.id = LEFT_RIGHT_IDX
 
-    def reset(self):
+    def setToInitialPosition(self):
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 0)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, OPERATING_MODE_ADDRESS, POSITION_CONTROL_MODE)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 1)
         PACKETHANDLER.write4ByteTxRx(PORTHANDLER, self.id, GOAL_POSITION_ADDRESS, self.startPosition)
-        time.sleep(10)
+
+    def changeMode(self):
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 0)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, OPERATING_MODE_ADDRESS, CURRENT_CONTROL_MODE)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 1)
@@ -81,12 +82,13 @@ class Up_Down_Motor():
         self.currentLimit = 910
         self.id = UP_DOWN_IDX
 
-    def reset(self):
+    def setToInitialPosition(self):
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 0)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, OPERATING_MODE_ADDRESS, POSITION_CONTROL_MODE)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 1)
         PACKETHANDLER.write4ByteTxRx(PORTHANDLER, self.id, GOAL_POSITION_ADDRESS, self.startPosition_30)
-        time.sleep(10)
+
+    def changeMode(self):
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 0)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, OPERATING_MODE_ADDRESS, CURRENT_CONTROL_MODE)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 1)
@@ -118,7 +120,7 @@ class Grasp_Motor():
         self.max_speed_rpm = 101.85
         self.id = GRASP_IDX
 
-    def reset(self):
+    def changeMode(self):
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 0)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, OPERATING_MODE_ADDRESS, VELOCITY_CONTROL_MODE)
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 1)
