@@ -39,6 +39,7 @@ class Left_Right_Motor():
         self.startPosition = 2048
         self.minPosition_minus_70 = 1252
         self.maxPosition_plus_70 = 2844
+        self.max_speed_unit = 320
         self.currentLimit = 910
         self.id = LEFT_RIGHT_IDX
 
@@ -60,6 +61,27 @@ class Left_Right_Motor():
             vec -= 0x100000000
         return pos, vec
 
+    def transferToCmd(self, pos, vec):
+        # pos to vel_cmd, vec to acc_cmd all in percentage
+        if pos < self.startPosition:
+            vel_cmd_percentage = (self.startPosition - pos) / (self.startPosition - self.minPosition_minus_70) * 100
+            vel_cmd = min(int(vel_cmd_percentage), 100) * -1
+        else:
+            vel_cmd_percentage = (pos - self.startPosition) / (self.maxPosition_plus_70 - self.startPosition) * 100
+            vel_cmd = min(int(vel_cmd_percentage), 100) 
+
+        speed = abs(vec)
+        abs_acc_cmd_percentage = min(int(speed / self.max_speed_unit * 100), 100)
+        if vec < 0:
+            acc_cmd = abs_acc_cmd_percentage * -1
+        else:
+            acc_cmd = abs_acc_cmd_percentage
+
+        return vel_cmd, acc_cmd
+            
+        
+    
+
     def runTorque(self, current):
         print("current limit: " + str(self.currentLimit))
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
@@ -79,6 +101,8 @@ class Up_Down_Motor():
         self.startPosition_30 = 2389
         self.minPosition_0 = 2048
         self.maxPosition_60 = 2731
+        self.max_speed_unit = 320
+        self.currentLimit = 910
         self.currentLimit = 910
         self.id = UP_DOWN_IDX
 
@@ -99,7 +123,25 @@ class Up_Down_Motor():
         if vec > 0x7FFFFFFF:
             vec -= 0x100000000
         return pos, vec
+    
+    def transferToCmd(self, pos, vec):
+        # pos to vel_cmd, vec to acc_cmd all in percentage
+        if pos < self.startPosition_30:
+            vel_cmd_percentage = (self.startPosition_30 - pos) / (self.startPosition_30 - self.minPosition_0) * 100
+            vel_cmd = min(int(vel_cmd_percentage), 100) * -1
+        else:
+            vel_cmd_percentage = (pos - self.startPosition_30) / (self.maxPosition_60 - self.startPosition_30) * 100
+            vel_cmd = min(int(vel_cmd_percentage), 100) 
 
+        speed = abs(vec)
+        abs_acc_cmd_percentage = min(int(speed / self.max_speed_unit * 100), 100)
+        if vec < 0:
+            acc_cmd = abs_acc_cmd_percentage * -1
+        else:
+            acc_cmd = abs_acc_cmd_percentage
+
+        return vel_cmd, acc_cmd
+ 
     def runTorque(self, current):
         print("current limit: " + str(self.currentLimit))
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
