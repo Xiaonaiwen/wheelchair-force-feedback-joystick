@@ -11,7 +11,7 @@ leftRightMotor.setToInitialPosition()
 time.sleep(5)
 leftRightMotor.changeMode()
 while True:
-    pos, vec = leftRightMotor.detectPositionVelocity
+    pos, vec = leftRightMotor.detectPositionVelocity()
     vel_cmd, acc_cmd = leftRightMotor.transferToCmd(pos, vec)
     print("vel cmd: " + str(vel_cmd))
     print("acc cmd: " + str(acc_cmd))
