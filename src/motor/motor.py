@@ -30,6 +30,10 @@ LEFT_RIGHT_IDX = 1
 UP_DOWN_IDX = 2
 GRASP_IDX = 3
 
+#Velocity Part
+RPM_TO_SPEEDUNIT = 320 / 73.24
+WHEELCHAIR_MAX_SPEED_METER_PER_SECOND = 3
+WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND = 1.2
 
 
 class Left_Right_Motor():
@@ -40,7 +44,7 @@ class Left_Right_Motor():
         self.startPosition = 2048
         self.minPosition_minus_70 = 1252
         self.maxPosition_plus_70 = 2844
-        self.max_speed_unit = 320
+        self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_plus_70 - self.startPosition) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
         self.integral = 0
         self.previousError = 0
@@ -113,7 +117,7 @@ class Up_Down_Motor():
         self.startPosition_30 = 2389
         self.minPosition_0 = 2048
         self.maxPosition_60 = 2731
-        self.max_speed_unit = 320
+        self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_60 - self.startPosition_30) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
         self.integral = 0
         self.previousError = 0
@@ -156,17 +160,17 @@ class Up_Down_Motor():
         # pos to vel_cmd, vec to acc_cmd all in percentage
         if pos < self.startPosition_30:
             vel_cmd_percentage = (self.startPosition_30 - pos) / (self.startPosition_30 - self.minPosition_0) * 100
-            vel_cmd = min(int(vel_cmd_percentage), 100) * -1
+            vel_cmd = min(int(vel_cmd_percentage), 100) 
         else:
             vel_cmd_percentage = (pos - self.startPosition_30) / (self.maxPosition_60 - self.startPosition_30) * 100
-            vel_cmd = min(int(vel_cmd_percentage), 100) 
+            vel_cmd = min(int(vel_cmd_percentage), 100) * -1
 
         speed = abs(vec)
         abs_acc_cmd_percentage = min(int(speed / self.max_speed_unit * 100), 100)
         if vec < 0:
-            acc_cmd = abs_acc_cmd_percentage * -1
+            acc_cmd = abs_acc_cmd_percentage 
         else:
-            acc_cmd = abs_acc_cmd_percentage
+            acc_cmd = abs_acc_cmd_percentage * -1
 
         return vel_cmd, acc_cmd
  
