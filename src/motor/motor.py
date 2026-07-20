@@ -125,17 +125,17 @@ class Up_Down_Motor():
         # pos to vel_cmd, vec to acc_cmd all in percentage
         if pos < self.startPosition_30:
             vel_cmd_percentage = (self.startPosition_30 - pos) / (self.startPosition_30 - self.minPosition_0) * 100
-            vel_cmd = min(int(vel_cmd_percentage), 100) * -1
+            vel_cmd = min(int(vel_cmd_percentage), 100) 
         else:
             vel_cmd_percentage = (pos - self.startPosition_30) / (self.maxPosition_60 - self.startPosition_30) * 100
-            vel_cmd = min(int(vel_cmd_percentage), 100) 
+            vel_cmd = min(int(vel_cmd_percentage), 100) * -1
 
         speed = abs(vec)
         abs_acc_cmd_percentage = min(int(speed / self.max_speed_unit * 100), 100)
         if vec < 0:
-            acc_cmd = abs_acc_cmd_percentage * -1
+            acc_cmd = abs_acc_cmd_percentage 
         else:
-            acc_cmd = abs_acc_cmd_percentage
+            acc_cmd = abs_acc_cmd_percentage * -1
 
         return vel_cmd, acc_cmd
  
