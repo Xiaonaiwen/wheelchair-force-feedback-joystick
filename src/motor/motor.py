@@ -78,15 +78,12 @@ class Left_Right_Motor():
             acc_cmd = abs_acc_cmd_percentage
 
         return vel_cmd, acc_cmd
-            
-        
+      
     
 
     def runTorque(self, current):
         print("current limit: " + str(self.currentLimit))
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
-        time.sleep(0.2)
-        PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, 0)
 
     def inverseTorque(self, wheel_current, acc_cmd, acc_max, vel_cmd, vel_max):
         current = int(self.k_torque * wheel_current + self.k_acc * max(acc_cmd - acc_max, 0) + self.k_vel * max(vel_cmd - vel_max, 0))
@@ -145,8 +142,6 @@ class Up_Down_Motor():
     def runTorque(self, current):
         print("current limit: " + str(self.currentLimit))
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
-        time.sleep(0.2)
-        PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, 0)
 
     def inverseTorque(self, wheel_current, acc_cmd, acc_max, vel_cmd, vel_max):
         current = int(self.k_torque * wheel_current + self.k_acc * max(acc_cmd - acc_max, 0) + self.k_vel * max(vel_cmd - vel_max, 0))
