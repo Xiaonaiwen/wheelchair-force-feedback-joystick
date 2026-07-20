@@ -31,6 +31,7 @@ UP_DOWN_IDX = 2
 GRASP_IDX = 3
 
 
+
 class Left_Right_Motor():
     def __init__(self, k_torque = 0, k_acc = 0, k_vel = 0):
         self.k_torque = k_torque
@@ -41,6 +42,9 @@ class Left_Right_Motor():
         self.maxPosition_plus_70 = 2844
         self.max_speed_unit = 320
         self.currentLimit = 910
+        self.integral = 0
+        self.previousError = 0
+        self.previousTime = 0
         self.id = LEFT_RIGHT_IDX
 
     def setToInitialPosition(self):
@@ -61,6 +65,19 @@ class Left_Right_Motor():
             vec -= 0x100000000
         return pos, vec
 
+    def pidForConstantPosition(self, goalPos, Kp = 0.05, Ki = 0.05, Kd = 0):
+        currentTime = time.perf_counter()
+        currentPos, _ = self.detectPositionVelocity()
+        currentError = goalPos - currentPos
+        timePeriod = currentTime - self.previousTime
+        self.integral += currentError * timePeriod
+        currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
+        currentOutput = min(currentOutput, self.currentLimit)
+        self.runTorque(currentOutput)
+        self.previousTime = currentTime
+        self.previousError = currentError
+
+
     def transferToCmd(self, pos, vec):
         # pos to vel_cmd, vec to acc_cmd all in percentage
         if pos < self.startPosition:
@@ -78,11 +95,9 @@ class Left_Right_Motor():
             acc_cmd = abs_acc_cmd_percentage
 
         return vel_cmd, acc_cmd
-      
-    
+
 
     def runTorque(self, current):
-        print("current limit: " + str(self.currentLimit))
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
 
     def inverseTorque(self, wheel_current, acc_cmd, acc_max, vel_cmd, vel_max):
@@ -100,7 +115,9 @@ class Up_Down_Motor():
         self.maxPosition_60 = 2731
         self.max_speed_unit = 320
         self.currentLimit = 910
-        self.currentLimit = 910
+        self.integral = 0
+        self.previousError = 0
+        self.previousTime = 0
         self.id = UP_DOWN_IDX
 
     def setToInitialPosition(self):
@@ -121,6 +138,20 @@ class Up_Down_Motor():
             vec -= 0x100000000
         return pos, vec
     
+
+    def pidForConstantPosition(self, goalPos, Kp = 0.05, Ki = 0.05, Kd = 0):
+        currentTime = time.perf_counter()
+        currentPos, _ = self.detectPositionVelocity()
+        currentError = goalPos - currentPos
+        timePeriod = currentTime - self.previousTime
+        self.integral += currentError * timePeriod
+        currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
+        currentOutput = min(currentOutput, self.currentLimit)
+        self.runTorque(currentOutput)
+        self.previousTime = currentTime
+        self.previousError = currentError
+
+
     def transferToCmd(self, pos, vec):
         # pos to vel_cmd, vec to acc_cmd all in percentage
         if pos < self.startPosition_30:
@@ -140,7 +171,6 @@ class Up_Down_Motor():
         return vel_cmd, acc_cmd
  
     def runTorque(self, current):
-        print("current limit: " + str(self.currentLimit))
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
 
     def inverseTorque(self, wheel_current, acc_cmd, acc_max, vel_cmd, vel_max):
