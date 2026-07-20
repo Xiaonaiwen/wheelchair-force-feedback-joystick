@@ -30,6 +30,10 @@ LEFT_RIGHT_IDX = 1
 UP_DOWN_IDX = 2
 GRASP_IDX = 3
 
+#Velocity Part
+RPM_TO_SPEEDUNIT = 320 / 73.24
+WHEELCHAIR_MAX_SPEED_METER_PER_SECOND = 3
+WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND = 1.2
 
 class Left_Right_Motor():
     def __init__(self, k_torque = 0, k_acc = 0, k_vel = 0):
@@ -39,7 +43,7 @@ class Left_Right_Motor():
         self.startPosition = 2048
         self.minPosition_minus_70 = 1252
         self.maxPosition_plus_70 = 2844
-        self.max_speed_unit = 320
+        self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_plus_70 - self.startPosition) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
         self.id = LEFT_RIGHT_IDX
 
@@ -98,7 +102,7 @@ class Up_Down_Motor():
         self.startPosition_30 = 2389
         self.minPosition_0 = 2048
         self.maxPosition_60 = 2731
-        self.max_speed_unit = 320
+        self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_60 - self.startPosition_30) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
         self.currentLimit = 910
         self.id = UP_DOWN_IDX
