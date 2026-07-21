@@ -69,14 +69,20 @@ class Left_Right_Motor():
             vec -= 0x100000000
         return pos, vec
 
-    def pidForConstantPosition(self, goalPos, Kp = 0.05, Ki = 0.05, Kd = 0):
+    def pidReset(self):
+        self.integral = 0
+        self.previousError = 0
+        self.previousTime = 0
+
+    def pidForConstantPosition(self, goalPos, Kp = 0.48, Ki = 0.004, Kd = 0.06):
         currentTime = time.perf_counter()
         currentPos, _ = self.detectPositionVelocity()
         currentError = goalPos - currentPos
         timePeriod = currentTime - self.previousTime
         self.integral += currentError * timePeriod
         currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
-        currentOutput = min(currentOutput, self.currentLimit)
+        currentOutput = int(max(min(currentOutput, self.currentLimit), -self.currentLimit))
+        print("set current: " + str(currentOutput))
         self.runTorque(currentOutput)
         self.previousTime = currentTime
         self.previousError = currentError
@@ -142,6 +148,11 @@ class Up_Down_Motor():
             vec -= 0x100000000
         return pos, vec
     
+    def pidReset(self):
+        self.integral = 0
+        self.previousError = 0
+        self.previousTime = 0
+
 
     def pidForConstantPosition(self, goalPos, Kp = 0.05, Ki = 0.05, Kd = 0):
         currentTime = time.perf_counter()
@@ -150,7 +161,8 @@ class Up_Down_Motor():
         timePeriod = currentTime - self.previousTime
         self.integral += currentError * timePeriod
         currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
-        currentOutput = min(currentOutput, self.currentLimit)
+        currentOutput = int(max(min(currentOutput, self.currentLimit), -self.currentLimit))
+        print("set current: " + str(currentOutput))
         self.runTorque(currentOutput)
         self.previousTime = currentTime
         self.previousError = currentError

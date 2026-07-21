@@ -7,6 +7,7 @@ leftRightMotor = Left_Right_Motor()
 
 
 upDownMotor.setToInitialPosition()
+leftRightMotor.setToInitialPosition()
 time.sleep(1)
 leftRightMotor.changeMode()
 
@@ -20,6 +21,8 @@ while True:
     time.sleep(1)
 """
 
-
 while True:
-    leftRightMotor.pidForConstantPosition(leftRightMotor.startPosition, Kp = 0.05, Ki = 0.05, Kd = 0)
+    leftRightMotor.pidForConstantPosition(leftRightMotor.startPosition, Kp = 0.48, Ki = 0.004, Kd = 0.06)
+    pos, vec = leftRightMotor.detectPositionVelocity()
+    vel_cmd, _ = leftRightMotor.transferToCmd(pos, vec)
+    print("vel cmd: " + str(vel_cmd))
