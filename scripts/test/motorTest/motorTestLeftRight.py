@@ -8,7 +8,7 @@ leftRightMotor = Left_Right_Motor()
 
 upDownMotor.setToInitialPosition()
 leftRightMotor.setToInitialPosition()
-time.sleep(1)
+time.sleep(2)
 leftRightMotor.changeMode()
 
 #Test it generates the velocity command and acc_command correctly
@@ -22,7 +22,9 @@ while True:
 """
 
 while True:
-    leftRightMotor.pidForConstantPosition(leftRightMotor.startPosition, Kp = 0.48, Ki = 0.004, Kd = 0.06)
+    assignCurrent = leftRightMotor.pidForConstantPosition(leftRightMotor.startPosition, Kp = 0.46, Ki = 1, Kd = 0.08)
+    # print(assignCurrent)
+    leftRightMotor.runTorque(leftRightMotor.currentBoundaryConsider(assignCurrent))
     pos, vec = leftRightMotor.detectPositionVelocity()
     vel_cmd, _ = leftRightMotor.transferToCmd(pos, vec)
     print("vel cmd: " + str(vel_cmd))

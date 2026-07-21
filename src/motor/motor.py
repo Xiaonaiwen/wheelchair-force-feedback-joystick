@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from dynamixel_sdk import *
 import time
+import math
 
 pi = "/dev/ttyUSB0"
 window_device = "COM7"
@@ -47,8 +48,8 @@ class Left_Right_Motor():
         self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_plus_70 - self.startPosition) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
         self.integral = 0
-        self.previousError = 0
-        self.previousTime = 0
+        self.previousError = None
+        self.previousTime = None
         self.id = LEFT_RIGHT_IDX
 
     def setToInitialPosition(self):
@@ -74,19 +75,28 @@ class Left_Right_Motor():
         self.previousError = 0
         self.previousTime = 0
 
-    def pidForConstantPosition(self, goalPos, Kp = 0.48, Ki = 0.004, Kd = 0.06):
+    def pidForConstantPosition(self, goalPos, Kp = 0.46, Ki = 0.0008, Kd = 0.06):
         currentTime = time.perf_counter()
         currentPos, _ = self.detectPositionVelocity()
         currentError = goalPos - currentPos
-        timePeriod = currentTime - self.previousTime
-        self.integral += currentError * timePeriod
-        currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
-        currentOutput = int(max(min(currentOutput, self.currentLimit), -self.currentLimit))
-        print("set current: " + str(currentOutput))
-        self.runTorque(currentOutput)
-        self.previousTime = currentTime
-        self.previousError = currentError
+        
+        if self.previousTime is None:
+            self.previousTime = currentTime
+            self.previousError = currentError
+            currentOutput = Kp * currentError
+        else:
+            timePeriod = currentTime - self.previousTime
+            self.integral += currentError * timePeriod
+            integralLimit = self.currentLimit / Ki / 4
+            self.integral = max(min(self.integral, integralLimit), -integralLimit)
+            currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
+            self.previousTime = currentTime
+            self.previousError = currentError
+        return currentOutput
 
+    def currentBoundaryConsider(self, currentEnter):
+        currentOutput = int(max(min(currentEnter, self.currentLimit), -self.currentLimit))
+        return currentOutput
 
     def transferToCmd(self, pos, vec):
         # pos to vel_cmd, vec to acc_cmd all in percentage
@@ -128,6 +138,8 @@ class Up_Down_Motor():
         self.integral = 0
         self.previousError = 0
         self.previousTime = 0
+        self.gravityCompensationHorinzontal = 160
+        # 110
         self.id = UP_DOWN_IDX
 
     def setToInitialPosition(self):
@@ -158,15 +170,28 @@ class Up_Down_Motor():
         currentTime = time.perf_counter()
         currentPos, _ = self.detectPositionVelocity()
         currentError = goalPos - currentPos
-        timePeriod = currentTime - self.previousTime
-        self.integral += currentError * timePeriod
-        currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
-        currentOutput = int(max(min(currentOutput, self.currentLimit), -self.currentLimit))
-        print("set current: " + str(currentOutput))
-        self.runTorque(currentOutput)
-        self.previousTime = currentTime
-        self.previousError = currentError
+        if self.previousTime is None:
+            self.previousTime = currentTime
+            self.previousError = currentError
+            currentOutput = Kp * currentError
+        else:
+            timePeriod = currentTime - self.previousTime
+            self.integral += currentError * timePeriod
+            integralLimit = self.currentLimit / Ki
+            self.integral = max(min(self.integral, integralLimit), -integralLimit)
+            currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
+            self.previousTime = currentTime
+            self.previousError = currentError
+        return currentOutput
 
+    def currentForGravityCompensation(self, currentPos):
+        angleFromHorizontal_radian = abs(currentPos - self.minPosition_0) * 2 * math.pi / 4096
+        currentCompensation = self.gravityCompensationHorinzontal * math.cos(angleFromHorizontal_radian)
+        return currentCompensation
+
+    def currentBoundaryConsider(self, currentEnter):
+        currentOutput = int(max(min(currentEnter, self.currentLimit), -self.currentLimit))
+        return currentOutput
 
     def transferToCmd(self, pos, vec):
         # pos to vel_cmd, vec to acc_cmd all in percentage
