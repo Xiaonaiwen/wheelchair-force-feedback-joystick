@@ -4,7 +4,6 @@ import time
 import math
 
 pi = "/dev/ttyUSB0"
-window_device = "COM7"
 PORTHANDLER = PortHandler(pi)
 PACKETHANDLER = PacketHandler(2.0)
 
@@ -35,21 +34,21 @@ GRASP_IDX = 3
 RPM_TO_SPEEDUNIT = 320 / 73.24
 WHEELCHAIR_MAX_SPEED_METER_PER_SECOND = 3
 WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND = 1.2
+SAFETY_PERIOD = 2
 
 
 class Left_Right_Motor():
-    def __init__(self, k_torque = 0, k_acc = 0, k_vel = 0):
-        self.k_torque = k_torque
-        self.k_acc = k_acc
-        self.k_vel = k_vel
+    def __init__(self):
         self.startPosition = 2048
         self.minPosition_minus_70 = 1252
         self.maxPosition_plus_70 = 2844
         self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_plus_70 - self.startPosition) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
+
         self.integral = 0
         self.previousError = None
         self.previousTime = None
+
         self.id = LEFT_RIGHT_IDX
 
     def setToInitialPosition(self):
@@ -72,8 +71,8 @@ class Left_Right_Motor():
 
     def pidReset(self):
         self.integral = 0
-        self.previousError = 0
-        self.previousTime = 0
+        self.previousError = None
+        self.previousTime = None
 
     def pidForConstantPosition(self, goalPos, Kp = 0.46, Ki = 0.0008, Kd = 0.06):
         currentTime = time.perf_counter()
@@ -87,7 +86,10 @@ class Left_Right_Motor():
         else:
             timePeriod = currentTime - self.previousTime
             self.integral += currentError * timePeriod
-            integralLimit = self.currentLimit / Ki / 4
+            if Ki == 0:
+                integralLimit = float('inf')
+            else:
+                integralLimit = self.currentLimit / Ki
             self.integral = max(min(self.integral, integralLimit), -integralLimit)
             currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
             self.previousTime = currentTime
@@ -120,26 +122,62 @@ class Left_Right_Motor():
     def runTorque(self, current):
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
 
-    def inverseTorque(self, wheel_current, acc_cmd, acc_max, vel_cmd, vel_max):
-        current = int(self.k_torque * wheel_current + self.k_acc * max(acc_cmd - acc_max, 0) + self.k_vel * max(vel_cmd - vel_max, 0))
-        self.runTorque(current)
+
+    def inverseTorque(
+        self, 
+
+        wheel_current, 
+        acc_cmd, 
+        acc_max, 
+        vel_cmd, 
+        pos, 
+
+        k_torque = 0, 
+        k_acc = 0, 
+        k_vel = 0, 
+        k_boundary = 0, 
+        k_initial_pos = 0, 
+        boundary_range = 10, 
+        initial_range = 10
+        ):
+
+        vel_max = acc_max * SAFETY_PERIOD
+        acc_diff = max(abs(acc_cmd) - acc_max, 0)
+        vel_diff = max(abs(vel_cmd) - vel_max, 0)
+        if acc_cmd < 0:
+            acc_diff *= -1
+        if vel_cmd < 0:
+            vel_diff *= -1
+        
+        if pos < startPosition:
+            boundary_diff = min(pos - self.minPosition_minus_70 - boundary_range, 0)
+        else:
+            boundary_diff = max(pos - self.maxPosition_plus_70 + boundary_range, 0)
+        
+        initial_diff = 0
+        if pos < (self.startPosition + initial_range) and pos > (self.startPosition - initial_range):
+            initial_diff = abs(pos - self.startPosition)
+            if pos < self.startPosition:
+                initial_diff *= -1
+
+        current = k_torque * wheel_current + k_acc * acc_diff + k_vel * vel_diff + k_boundary * boundary_diff + k_initial_pos * initial_diff
+        return current
 
 
 class Up_Down_Motor():
-    def __init__(self, k_torque = 0, k_acc = 0, k_vel = 0):
-        self.k_torque = k_torque
-        self.k_acc = k_acc
-        self.k_vel = k_vel
+    def __init__(self):
         self.startPosition_30 = 2389
         self.minPosition_0 = 2048
         self.maxPosition_60 = 2731
         self.max_speed_unit = WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * (self.maxPosition_60 - self.startPosition_30) / 4096 * 60 * RPM_TO_SPEEDUNIT
         self.currentLimit = 910
+
         self.integral = 0
-        self.previousError = 0
-        self.previousTime = 0
-        self.gravityCompensationHorinzontal = 160
-        # 110
+        self.previousError = None
+        self.previousTime = None
+
+        self.gravityCompensationHorizontal = 160
+
         self.id = UP_DOWN_IDX
 
     def setToInitialPosition(self):
@@ -162,8 +200,8 @@ class Up_Down_Motor():
     
     def pidReset(self):
         self.integral = 0
-        self.previousError = 0
-        self.previousTime = 0
+        self.previousError = None
+        self.previousTime = None
 
 
     def pidForConstantPosition(self, goalPos, Kp = 0.05, Ki = 0.05, Kd = 0):
@@ -177,16 +215,20 @@ class Up_Down_Motor():
         else:
             timePeriod = currentTime - self.previousTime
             self.integral += currentError * timePeriod
-            integralLimit = self.currentLimit / Ki
+            if Ki == 0:
+                integralLimit = float('inf')
+            else:
+                integralLimit = self.currentLimit / Ki / 1.5
             self.integral = max(min(self.integral, integralLimit), -integralLimit)
             currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
             self.previousTime = currentTime
             self.previousError = currentError
         return currentOutput
 
-    def currentForGravityCompensation(self, currentPos):
-        angleFromHorizontal_radian = abs(currentPos - self.minPosition_0) * 2 * math.pi / 4096
-        currentCompensation = self.gravityCompensationHorinzontal * math.cos(angleFromHorizontal_radian)
+    def currentForGravityCompensation(self, posUpDown, posLeftRight):
+        angleLeftRight_radian = abs(posLeftRight - 2048) * 2 * math.pi / 4096
+        angleFromHorizontal_radian = abs(posUpDown - self.minPosition_0) * 2 * math.pi / 4096
+        currentCompensation = self.gravityCompensationHorizontal * math.cos(angleFromHorizontal_radian) * math.cos(angleLeftRight_radian)
         return currentCompensation
 
     def currentBoundaryConsider(self, currentEnter):
@@ -214,12 +256,45 @@ class Up_Down_Motor():
     def runTorque(self, current):
         PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
 
-    def inverseTorque(self, wheel_current, acc_cmd, acc_max, vel_cmd, vel_max):
-        current = int(self.k_torque * wheel_current + self.k_acc * max(acc_cmd - acc_max, 0) + self.k_vel * max(vel_cmd - vel_max, 0))
-        PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
-        time.sleep(0.5)
-        PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, 0)
+    def inverseTorque(
+        self, 
 
+        wheel_current, 
+        acc_cmd, 
+        acc_max, 
+        vel_cmd, 
+        pos, 
+
+        k_torque = 0, 
+        k_acc = 0, 
+        k_vel = 0, 
+        k_boundary = 0, 
+        k_initial_pos = 0, 
+        boundary_range = 10, 
+        initial_range = 10
+        ):
+
+        vel_max = acc_max * SAFETY_PERIOD
+        acc_diff = max(abs(acc_cmd) - acc_max, 0)
+        vel_diff = max(abs(vel_cmd) - vel_max, 0)
+        if acc_cmd < 0:
+            acc_diff *= -1
+        if vel_cmd < 0:
+            vel_diff *= -1
+        
+        if pos < self.startPosition_30:
+            boundary_diff = min(pos - self.minPosition_0 - boundary_range, 0)
+        else:
+            boundary_diff = max(pos - self.maxPosition_60 + boundary_range, 0)
+        
+        initial_diff = 0
+        if pos < (self.startPosition_30 + initial_range) and pos > (self.startPosition_30 - initial_range):
+            initial_diff = abs(pos - self.startPosition_30)
+            if pos < self.startPosition_30:
+                initial_diff *= -1
+
+        current = k_torque * wheel_current + k_acc * acc_diff + k_vel * vel_diff + k_boundary * boundary_diff + k_initial_pos * initial_diff
+        return current
 
 class Grasp_Motor():
     def __init__(self, k_slip):
@@ -234,14 +309,15 @@ class Grasp_Motor():
         PACKETHANDLER.write1ByteTxRx(PORTHANDLER, self.id, TORQUE_ENABLE_ADDRESS, 1)
 
     def runVel(self, vel):
-        print("max speed unit: " + str(self.max_speed_unit))
         PACKETHANDLER.write4ByteTxRx(PORTHANDLER, self.id, GOAL_VELOCITY_ADDRESS, vel & 0xFFFFFFFF)
        
-    def speed(self, rotation_speed, slip_ratio):
+    def speed(self, rotation_speed, slip_ratio, maxSpeed = 445):
         if slip_ratio < 0:
             slip_ratio = 0
  
         speed = slip_ratio * self.k_slip
+        speed = max(min(speed, maxSpeed), -maxSpeed)
+
         if rotation_speed >= 0:
             vel = speed
             self.runVel(vel)
