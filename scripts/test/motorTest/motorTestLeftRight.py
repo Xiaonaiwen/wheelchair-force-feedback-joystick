@@ -22,7 +22,7 @@ while True:
 """
 
 while True:
-    assignCurrent = leftRightMotor.pidForConstantPosition(leftRightMotor.startPosition, Kp = 0.46, Ki = 1, Kd = 0.08)
+    assignCurrent = leftRightMotor.pidForConstantPosition(leftRightMotor.startPosition)
     leftRightMotor.runTorque(leftRightMotor.currentBoundaryConsider(assignCurrent))
     pos, vec = leftRightMotor.detectPositionVelocity()
     vel_cmd, _ = leftRightMotor.transferToCmd(pos, vec)

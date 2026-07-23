@@ -34,6 +34,4 @@ def predict_frame(frame):
 
     with torch.no_grad():
         prediction = model(image).item()
-
-    print(f"\nEstimated Static Friction Coefficient (μs): {prediction:.3f}")
     return prediction

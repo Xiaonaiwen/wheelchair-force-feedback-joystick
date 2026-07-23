@@ -30,11 +30,12 @@ LEFT_RIGHT_IDX = 1
 UP_DOWN_IDX = 2
 GRASP_IDX = 3
 
-#Velocity Part
+#Wheelchair Property
 RPM_TO_SPEEDUNIT = 320 / 73.24
 WHEELCHAIR_MAX_SPEED_METER_PER_SECOND = 3
 WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND = 1.2
 SAFETY_PERIOD = 2
+WHEELCHAIR_MAX_CURRENT = 15
 
 
 class Left_Right_Motor():
@@ -74,7 +75,7 @@ class Left_Right_Motor():
         self.previousError = None
         self.previousTime = None
 
-    def pidForConstantPosition(self, goalPos, Kp = 0.46, Ki = 0.0008, Kd = 0.06):
+    def pidForConstantPosition(self, goalPos, Kp = 0.2, Ki = 0.5, Kd = 0.04):
         currentTime = time.perf_counter()
         currentPos, _ = self.detectPositionVelocity()
         currentError = goalPos - currentPos
@@ -89,7 +90,7 @@ class Left_Right_Motor():
             if Ki == 0:
                 integralLimit = float('inf')
             else:
-                integralLimit = self.currentLimit / Ki
+                integralLimit = self.currentLimit / Ki / 1.4
             self.integral = max(min(self.integral, integralLimit), -integralLimit)
             currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
             self.previousTime = currentTime
@@ -142,8 +143,12 @@ class Left_Right_Motor():
         ):
 
         vel_max = acc_max * SAFETY_PERIOD
+        # transfer to command unit
+        acc_max = acc_max / WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND * 100
+        vel_max = vel_max / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * 100
         acc_diff = max(abs(acc_cmd) - acc_max, 0)
         vel_diff = max(abs(vel_cmd) - vel_max, 0)
+
         if acc_cmd < 0:
             acc_diff *= -1
         if vel_cmd < 0:
@@ -204,7 +209,7 @@ class Up_Down_Motor():
         self.previousTime = None
 
 
-    def pidForConstantPosition(self, goalPos, Kp = 0.05, Ki = 0.05, Kd = 0):
+    def pidForConstantPosition(self, goalPos, Kp = 1.1, Ki = 1.4, Kd = 0.2):
         currentTime = time.perf_counter()
         currentPos, _ = self.detectPositionVelocity()
         currentError = goalPos - currentPos
@@ -218,7 +223,7 @@ class Up_Down_Motor():
             if Ki == 0:
                 integralLimit = float('inf')
             else:
-                integralLimit = self.currentLimit / Ki / 1.5
+                integralLimit = self.currentLimit / Ki / 1.4
             self.integral = max(min(self.integral, integralLimit), -integralLimit)
             currentOutput = currentError * Kp + (currentError - self.previousError) / timePeriod * Kd + self.integral * Ki
             self.previousTime = currentTime
@@ -229,6 +234,8 @@ class Up_Down_Motor():
         angleLeftRight_radian = abs(posLeftRight - 2048) * 2 * math.pi / 4096
         angleFromHorizontal_radian = abs(posUpDown - self.minPosition_0) * 2 * math.pi / 4096
         currentCompensation = self.gravityCompensationHorizontal * math.cos(angleFromHorizontal_radian) * math.cos(angleLeftRight_radian)
+        if (posLeftRight - 2048) > 0:
+            currentCompensation *= 1.3
         return currentCompensation
 
     def currentBoundaryConsider(self, currentEnter):
@@ -254,7 +261,13 @@ class Up_Down_Motor():
         return vel_cmd, acc_cmd
  
     def runTorque(self, current):
-        PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
+        dxl_comm_result, _ = PACKETHANDLER.write2ByteTxRx(PORTHANDLER, self.id, GOAL_CURRENT_ADDRESS, current & 0xFFFF)
+        if dxl_comm_result != COMM_SUCCESS:
+            print(f"Communication failed: {PACKETHANDLER.getTxRxResult(dxl_comm_result)}")
+            return False
+        else:
+            return True
+
 
     def inverseTorque(
         self, 
@@ -275,6 +288,10 @@ class Up_Down_Motor():
         ):
 
         vel_max = acc_max * SAFETY_PERIOD
+        # transfer to command unit
+        acc_max = acc_max / WHEELCHAIR_MAX_ACCELERATION_METER_PER_SQUARE_SECOND * 100
+        vel_max = vel_max / WHEELCHAIR_MAX_SPEED_METER_PER_SECOND * 100
+
         acc_diff = max(abs(acc_cmd) - acc_max, 0)
         vel_diff = max(abs(vel_cmd) - vel_max, 0)
         if acc_cmd < 0:
@@ -297,8 +314,7 @@ class Up_Down_Motor():
         return current
 
 class Grasp_Motor():
-    def __init__(self, k_slip):
-        self.k_slip = k_slip
+    def __init__(self):
         self.max_speed_unit = 445
         self.max_speed_rpm = 101.85
         self.id = GRASP_IDX
@@ -311,18 +327,19 @@ class Grasp_Motor():
     def runVel(self, vel):
         PACKETHANDLER.write4ByteTxRx(PORTHANDLER, self.id, GOAL_VELOCITY_ADDRESS, vel & 0xFFFFFFFF)
        
-    def speed(self, rotation_speed, slip_ratio, maxSpeed = 445):
-        if slip_ratio < 0:
+    def reverseSpeed(self, forwardFlag, slip_ratio, maximumSlipExpected = 5, maxSpeed = 445):
+        if slip_ratio < 0.1:
             slip_ratio = 0
- 
-        speed = slip_ratio * self.k_slip
-        speed = max(min(speed, maxSpeed), -maxSpeed)
 
-        if rotation_speed >= 0:
-            vel = speed
-            self.runVel(vel)
-        else:
+        k_slip = maxSpeed / maximumSlipExpected
+        speed = slip_ratio * k_slip
+        speed = int(max(min(speed, maxSpeed), -maxSpeed))
+
+        if forwardFlag:
             vel = speed * -1
+            self.runVel(vel) 
+        else:
+            vel = speed
             self.runVel(vel)
 
 

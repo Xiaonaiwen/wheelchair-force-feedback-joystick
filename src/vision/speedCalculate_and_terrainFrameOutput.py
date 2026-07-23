@@ -2,7 +2,7 @@ import numpy as np
 import cv2 as cv
 
 class Optical_Flow:
-    def __init__(self, width = 640, height = 480, feature_frame_refresh = 5, wheel_error_threshold = 10, ground_error_threshold = 10, pixel_scale = 0.001, slip_threshold = 0):
+    def __init__(self, width = 640, height = 480, feature_frame_refresh = 5, wheel_error_threshold = 10, ground_error_threshold = 10, pixel_scale = (0.57 - 0.16) / (600 - 22), slip_threshold = 0.1):
         self.width = width
         self.height = height
         self.frame_count = feature_frame_refresh
@@ -11,6 +11,7 @@ class Optical_Flow:
         self.ground_error_threshold = ground_error_threshold
         self.pixel_scale = pixel_scale
         self.slip_threshold = slip_threshold
+        self.noMove_threshold = 5e-2
 
 
     def set_ground_feature_params(self, maxCorners = 100, qualityLevel = 0.3, minDistance = 7, blockSize = 7):
@@ -114,13 +115,27 @@ class Optical_Flow:
         return distance / time
 
 
-    def slipRatio_and_currentAcceleration(self, wheel_distance, ground_distance, period, current_time, previous_ground_velocity, previous_time, radius = 10):
+    def slipRatio_and_currentAcceleration(self, wheel_distance, ground_distance, period, current_time, previous_ground_velocity, previous_time, radius = 0.1778):
         w = Optical_Flow.rotational_speed(wheel_distance, period, radius)
         v = Optical_Flow.ground_speed(ground_distance, period)
         s = (radius * w - v) / v
         slipping = s > self.slip_threshold
-
+        noMove = False
+        if v < self.noMove_threshold and w < (self.noMove_threshold / radius):
+            noMove = True
+            slipping = False
+            s = 0
         a = (v - previous_ground_velocity) / (current_time - previous_time)
-        return slipping, a, v, w
+        return slipping, s, a, noMove, v, w
 
-
+    def slipRatuib_and_noAcceleration(self, wheel_distance, ground_distance, period, radius = 0.1778):
+        w = Optical_Flow.rotational_speed(wheel_distance, period, radius)
+        v = Optical_Flow.ground_speed(ground_distance, period)
+        s = (radius * w - v) / v
+        slipping = s > self.slip_threshold
+        noMove = False
+        if v < self.noMove_threshold and w < (self.noMove_threshold / radius):
+            noMove = True
+            slipping = False
+            s = 0
+        return slipping, s, noMove, v, w

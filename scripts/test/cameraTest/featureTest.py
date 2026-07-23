@@ -3,7 +3,10 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from picamera2 import Picamera2
+
+from src.camera.camera import Camera
+from src.vision.speedCalculate_and_terrainFrameOutput import Optical_Flow
+from src.friction_model.friction_predict import predict_frame
 
 
 # -----------------------------
@@ -12,124 +15,199 @@ from picamera2 import Picamera2
 WIDTH = 640
 HEIGHT = 480
 FPS = 20
-SAVE_EVERY_N_FRAMES = 30
-MAX_CORNERS = 100
+DURATION = 20
+FEATURE_REFRESH = 5
 
-feature_params = dict(
-    maxCorners=MAX_CORNERS,
-    qualityLevel=0.3,
-    minDistance=7,
-    blockSize=7
-)
-
-lk_params = dict(
-    winSize=(15, 15),
-    maxLevel=2,
-    criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.03)
-)
+# Change these to your real wheel/ground regions
+WHEEL_MASK = (0, 220, 185, 328)      # x_low, x_high, y_low, y_high
+GROUND_MASK = (0, 500, 410, 480)   # x_low, x_high, y_low, y_high
 
 
-def make_output_dirs():
-    base_dir = Path.home() / "captures"
-    session_dir = base_dir / time.strftime("%Y%m%d_%H%M%S")
-    frames_dir = session_dir / "frames"
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    return session_dir, frames_dir
+def draw_points(frame, points, color, radius=4):
+    if points is None:
+        return frame
+    for p in points:
+        x, y = p.ravel()
+        cv2.circle(frame, (int(x), int(y)), radius, color, -1)
+    return frame
 
 
 def main():
-    session_dir, frames_dir = make_output_dirs()
-    video_path = session_dir / "tracked.mp4"
+    video_path = Path("tracked.mp4")
 
-    print(f"Saving to: {session_dir}")
-
-    picam2 = Picamera2()
-    config = picam2.create_preview_configuration(
-        main={"size": (WIDTH, HEIGHT), "format": "RGB888"}
+    camera = Camera()
+    optic = Optical_Flow(
+        width=WIDTH,
+        height=HEIGHT,
+        feature_frame_refresh=FEATURE_REFRESH
     )
-    picam2.configure(config)
-    picam2.start()
-    time.sleep(1.0)
+    optic.default_set()
+    optic.set_wheel_mask(*WHEEL_MASK)
+    optic.set_ground_mask(*GROUND_MASK)
 
-    frame = picam2.capture_array()
-    old_gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
-    p0 = cv2.goodFeaturesToTrack(old_gray, mask=None, **feature_params)
+    camera.start()
+    time.sleep(1.0)
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(video_path), fourcc, FPS, (WIDTH, HEIGHT))
 
-    mask = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
-    frame_idx = 0
-    num = 0
 
-    cv2.namedWindow("Tracked frame", cv2.WINDOW_NORMAL)
+    previousGroundVelocity = None
+    previousTime = None
+    standardFrameTime = None
 
-    while num < 100:
-        frame = picam2.capture_array()
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        frame_gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+    start_time = time.time()
 
-        if p0 is None or len(p0) < 10:
-            p0 = cv2.goodFeaturesToTrack(frame_gray, mask=None, **feature_params)
-            old_gray = frame_gray.copy()
+    try:
+        while time.time() - start_time < DURATION:
+            frame, currentTime = camera.read()
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-            writer.write(frame_bgr)
+            success, wheel_distance_move, ground_distance_move = optic.lk(frame_bgr)
 
-            if frame_idx % SAVE_EVERY_N_FRAMES == 0:
-                cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), frame_bgr)
+            output = frame_bgr.copy()
 
-            cv2.imshow("Tracked frame", frame_bgr)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            # draw current feature points
+            output = draw_points(output, getattr(optic, "wheel_feature", None), (0, 0, 255))
+            output = draw_points(output, getattr(optic, "ground_feature", None), (0, 255, 0))
 
-            frame_idx += 1
-            num += 1
-            continue
+            # draw masks
+            cv2.rectangle(
+                output,
+                (WHEEL_MASK[0], WHEEL_MASK[2]),
+                (WHEEL_MASK[1], WHEEL_MASK[3]),
+                (0, 0, 255),
+                2
+            )
+            cv2.rectangle(
+                output,
+                (GROUND_MASK[0], GROUND_MASK[2]),
+                (GROUND_MASK[1], GROUND_MASK[3]),
+                (0, 255, 0),
+                2
+            )
 
-        p1, st, err = cv2.calcOpticalFlowPyrLK(
-            old_gray, frame_gray, p0, None, **lk_params
-        )
+            terrainFrame = optic.get_terrain_frame(frame_bgr)
+            coefficient = predict_frame(terrainFrame)
 
-        if p1 is None or st is None:
-            p0 = None
-            old_gray = frame_gray.copy()
-            continue
+            y = 25
+            cv2.putText(
+                output,
+                f"terrain coefficient: {coefficient:.3f}",
+                (20, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                (255, 255, 0),
+                2
+            )
+            y += 28
 
-        good_new = p1[st == 1]
-        good_old = p0[st == 1]
+            if success:
+                period = currentTime - standardFrameTime
+                if period <= 0:
+                    period = 1e-6
 
-        annotated = frame_bgr.copy()
+                if previousTime is None or previousGroundVelocity is None:
+                    slip, s, noMove, v, w = optic.slipRatuib_and_noAcceleration(wheel_distance_move, ground_distance_move, period)
+                    a = None
+                else:
+                    slip, s, a, noMove, v, w = optic.slipRatio_and_currentAcceleration(
+                        wheel_distance_move,
+                        ground_distance_move,
+                        period,
+                        currentTime,
+                        previousGroundVelocity,
+                        previousTime
+                    )
 
-        for new, old in zip(good_new, good_old):
-            a, b = new.ravel()
-            c, d = old.ravel()
-            a, b, c, d = map(int, [a, b, c, d])
+                previousTime = currentTime
+                previousGroundVelocity = v
 
-            mask = cv2.line(mask, (a, b), (c, d), (0, 255, 0), 2)
-            annotated = cv2.circle(annotated, (a, b), 5, (0, 0, 255), -1)
+                cv2.putText(
+                    output,
+                    f"period: {period:.3f} s",
+                    (20, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (255, 255, 255),
+                    2
+                )
+                y += 28
 
-        output = cv2.add(annotated, mask)
+                cv2.putText(
+                    output,
+                    f"slip: {slip}",
+                    (20, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (0, 0, 255),
+                    2
+                )
+                y += 28
 
-        writer.write(output)
+                cv2.putText(
+                    output,
+                    f"noMove: {noMove}",
+                    (20, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (255, 255, 255),   # choose any colour you like
+                    2
+                )
+                y += 28
 
-        if frame_idx % SAVE_EVERY_N_FRAMES == 0:
-            cv2.imwrite(str(frames_dir / f"frame_{frame_idx:06d}.jpg"), output)
+                if a is not None:
+                    cv2.putText(
+                        output,
+                        f"acceleration: {a:.3f}",
+                        (20, y),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.65,
+                        (0, 255, 255),
+                        2
+                    )
+                    y += 28
 
-        cv2.imshow("Tracked frame", output)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+                cv2.putText(
+                    output,
+                    f"velocity: {v:.3f}",
+                    (20, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (0, 255, 0),
+                    2
+                )
+                y += 28
 
-        old_gray = frame_gray.copy()
-        p0 = good_new.reshape(-1, 1, 2)
-        frame_idx += 1
-        num += 1
+                cv2.putText(
+                    output,
+                    f"angular velocity: {w:.3f}",
+                    (20, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.65,
+                    (255, 0, 255),
+                    2
+                )
+            else:
+                standardFrameTime = currentTime
+                cv2.putText(
+                    output,
+                    "REFERENCE FRAME UPDATED",
+                    (20, y),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.75,
+                    (0, 255, 255),
+                    2
+                )
 
-    writer.release()
-    picam2.stop()
-    cv2.destroyAllWindows()
+            writer.write(output)
 
-    print(f"Saved video: {video_path}")
-    print(f"Saved frames in: {frames_dir}")
+    finally:
+        writer.release()
+        camera.stop()
+        cv2.destroyAllWindows()
+
+    print(f"Saved video: {video_path.resolve()}")
 
 
 if __name__ == "__main__":
