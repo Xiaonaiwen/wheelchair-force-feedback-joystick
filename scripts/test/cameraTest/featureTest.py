@@ -15,12 +15,12 @@ from src.friction_model.friction_predict import predict_frame
 WIDTH = 640
 HEIGHT = 480
 FPS = 20
-DURATION = 20
+MAX_FRAMES = 30
 FEATURE_REFRESH = 5
 
 # Change these to your real wheel/ground regions
 WHEEL_MASK = (0, 220, 185, 328)      # x_low, x_high, y_low, y_high
-GROUND_MASK = (0, 500, 410, 480)   # x_low, x_high, y_low, y_high
+GROUND_MASK = (0, 500, 420, 480)     # x_low, x_high, y_low, y_high
 
 
 def draw_points(frame, points, color, radius=4):
@@ -32,6 +32,46 @@ def draw_points(frame, points, color, radius=4):
     return frame
 
 
+def draw_two_column_text(
+    frame,
+    left_items,
+    right_items,
+    start_y=25,
+    left_x=20,
+    right_x=330,
+    line_gap=28,
+    font_scale=0.6,
+    thickness=2,
+):
+    """Draw two aligned text columns on the frame."""
+    max_rows = max(len(left_items), len(right_items))
+    for row in range(max_rows):
+        y = start_y + row * line_gap
+        if row < len(left_items):
+            text, color = left_items[row]
+            cv2.putText(
+                frame,
+                text,
+                (left_x, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_scale,
+                color,
+                thickness,
+            )
+        if row < len(right_items):
+            text, color = right_items[row]
+            cv2.putText(
+                frame,
+                text,
+                (right_x, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                font_scale,
+                color,
+                thickness,
+            )
+    return frame
+
+
 def main():
     video_path = Path("tracked.mp4")
 
@@ -39,7 +79,7 @@ def main():
     optic = Optical_Flow(
         width=WIDTH,
         height=HEIGHT,
-        feature_frame_refresh=FEATURE_REFRESH
+        feature_frame_refresh=FEATURE_REFRESH,
     )
     optic.default_set()
     optic.set_wheel_mask(*WHEEL_MASK)
@@ -51,15 +91,15 @@ def main():
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(video_path), fourcc, FPS, (WIDTH, HEIGHT))
 
+    previousGroundVelocity = 0
+    previousTime = 0
+    previousWheelMove = 0
+    previousGroundMove = 0
 
-    previousGroundVelocity = None
-    previousTime = None
-    standardFrameTime = None
-
-    start_time = time.time()
+    count = 0
 
     try:
-        while time.time() - start_time < DURATION:
+        while True:
             frame, currentTime = camera.read()
             frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
@@ -77,130 +117,65 @@ def main():
                 (WHEEL_MASK[0], WHEEL_MASK[2]),
                 (WHEEL_MASK[1], WHEEL_MASK[3]),
                 (0, 0, 255),
-                2
+                2,
             )
             cv2.rectangle(
                 output,
                 (GROUND_MASK[0], GROUND_MASK[2]),
                 (GROUND_MASK[1], GROUND_MASK[3]),
                 (0, 255, 0),
-                2
+                2,
             )
 
             terrainFrame = optic.get_terrain_frame(frame_bgr)
             coefficient = predict_frame(terrainFrame)
 
-            y = 25
-            cv2.putText(
-                output,
-                f"terrain coefficient: {coefficient:.3f}",
-                (20, y),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (255, 255, 0),
-                2
-            )
-            y += 28
+            left_items = [(f"terrain coefficient: {coefficient:.3f}", (255, 255, 0))]
+            right_items = []
 
             if success:
-                period = currentTime - standardFrameTime
-                if period <= 0:
-                    period = 1e-6
-
-                if previousTime is None or previousGroundVelocity is None:
-                    slip, s, noMove, v, w = optic.slipRatuib_and_noAcceleration(wheel_distance_move, ground_distance_move, period)
-                    a = None
-                else:
-                    slip, s, a, noMove, v, w = optic.slipRatio_and_currentAcceleration(
-                        wheel_distance_move,
-                        ground_distance_move,
-                        period,
-                        currentTime,
-                        previousGroundVelocity,
-                        previousTime
-                    )
+                period = currentTime - previousTime
+                slip, s, a, noMove, v, w = optic.slipRatio_and_currentAcceleration(
+                    wheel_distance_move - previousWheelMove,
+                    ground_distance_move - previousGroundMove,
+                    period,
+                    currentTime,
+                    previousGroundVelocity,
+                    previousTime,
+                )
 
                 previousTime = currentTime
                 previousGroundVelocity = v
+                previousWheelMove = wheel_distance_move
+                previousGroundMove = ground_distance_move
 
-                cv2.putText(
-                    output,
-                    f"period: {period:.3f} s",
-                    (20, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
-                    (255, 255, 255),
-                    2
+                left_items.extend(
+                    [
+                        (f"period: {period:.3f} s", (255, 255, 255)),
+                        (f"slip: {slip}", (0, 0, 255)),
+                        (f"s: {s:.3f}", (0, 255, 255)),
+                    ]
                 )
-                y += 28
-
-                cv2.putText(
-                    output,
-                    f"slip: {slip}",
-                    (20, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
-                    (0, 0, 255),
-                    2
-                )
-                y += 28
-
-                cv2.putText(
-                    output,
-                    f"noMove: {noMove}",
-                    (20, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
-                    (255, 255, 255),   # choose any colour you like
-                    2
-                )
-                y += 28
-
-                if a is not None:
-                    cv2.putText(
-                        output,
-                        f"acceleration: {a:.3f}",
-                        (20, y),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.65,
-                        (0, 255, 255),
-                        2
-                    )
-                    y += 28
-
-                cv2.putText(
-                    output,
-                    f"velocity: {v:.3f}",
-                    (20, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
-                    (0, 255, 0),
-                    2
-                )
-                y += 28
-
-                cv2.putText(
-                    output,
-                    f"angular velocity: {w:.3f}",
-                    (20, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
-                    (255, 0, 255),
-                    2
+                right_items.extend(
+                    [
+                        (f"noMove: {noMove}", (255, 255, 255)),
+                        (f"acceleration: {a:.3f}", (0, 255, 255)),
+                        (f"velocity: {v:.3f}", (0, 255, 0)),
+                        (f"angular velocity: {w:.3f}", (255, 0, 255)),
+                    ]
                 )
             else:
-                standardFrameTime = currentTime
-                cv2.putText(
-                    output,
-                    "REFERENCE FRAME UPDATED",
-                    (20, y),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.75,
-                    (0, 255, 255),
-                    2
-                )
+                previousWheelMove = 0
+                previousGroundMove = 0
+                left_items.append(("updating frame", (0, 255, 255)))
+
+            output = draw_two_column_text(output, left_items, right_items)
 
             writer.write(output)
+
+            count += 1
+            if count == MAX_FRAMES:
+                break
 
     finally:
         writer.release()

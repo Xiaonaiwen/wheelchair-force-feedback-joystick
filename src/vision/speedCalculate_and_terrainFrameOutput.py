@@ -5,13 +5,21 @@ class Optical_Flow:
     def __init__(self, width = 640, height = 480, feature_frame_refresh = 5, wheel_error_threshold = 10, ground_error_threshold = 10, pixel_scale = (0.57 - 0.16) / (600 - 22), slip_threshold = 0.1):
         self.width = width
         self.height = height
+        
         self.frame_count = feature_frame_refresh
         self.refresh_bound = feature_frame_refresh
         self.wheel_error_threshold = wheel_error_threshold
         self.ground_error_threshold = ground_error_threshold
+
+        #back up
+        self.previous_wheel_move = 0
+        self.previous_ground_move = 0    
+
         self.pixel_scale = pixel_scale
         self.slip_threshold = slip_threshold
-        self.noMove_threshold = 5e-2
+        self.noMove_threshold = 1e-2
+
+
 
 
     def set_ground_feature_params(self, maxCorners = 100, qualityLevel = 0.3, minDistance = 7, blockSize = 7):
@@ -79,29 +87,50 @@ class Optical_Flow:
             self.standard_frame = current_frame
             self.wheel_feature =  cv.goodFeaturesToTrack(current_frame, mask = self.wheel_mask, **self.wheel_feature_params)
             self.ground_feature = cv.goodFeaturesToTrack(current_frame, mask = self.ground_mask, **self.ground_feature_params)
-            self.frame_count = 0
+            
+            if self.wheel_feature is None or self.ground_feature is None:
+                print("frame selected does not contain features")
+            else:
+                self.frame_count = 0
+
             return False, -1, -1
+
         else:
             wheel_p, wheel_st, wheel_err = cv.calcOpticalFlowPyrLK(self.standard_frame, current_frame, self.wheel_feature, None, **self.wheel_lk_params)
             ground_p, ground_st, ground_err = cv.calcOpticalFlowPyrLK(self.standard_frame, current_frame, self.ground_feature, None, **self.ground_lk_params)
-            good_wheel_new = wheel_p[(wheel_st == 1) & (wheel_err < self.wheel_error_threshold)]
-            good_wheel_reference = self.wheel_feature[(wheel_st == 1) & (wheel_err < self.wheel_error_threshold)]
+            
+            if wheel_p is None or ground_p is None:
+                print("No features discovered, use the previous one result")
+                wheel_distance_move =self.previous_wheel_move
+                ground_distance_move = self.previous_ground_move
+            
+            else:
+                good_wheel_new = wheel_p[(wheel_st == 1) & (wheel_err < self.wheel_error_threshold)]
+                good_wheel_reference = self.wheel_feature[(wheel_st == 1) & (wheel_err < self.wheel_error_threshold)]
 
-            good_ground_new = ground_p[(ground_st == 1) & (ground_err < self.ground_error_threshold)]
-            good_ground_reference = self.ground_feature[(ground_st == 1) & (ground_err < self.ground_error_threshold)]
+                good_ground_new = ground_p[(ground_st == 1) & (ground_err < self.ground_error_threshold)]
+                good_ground_reference = self.ground_feature[(ground_st == 1) & (ground_err < self.ground_error_threshold)]
 
-            # wheel part: //only the contact area between the wheel and the ground
-            wheel_diff = good_wheel_new.reshape(-1, 2) - good_wheel_reference.reshape(-1, 2)
-            wheel_pixel_move = np.mean(np.linalg.norm(wheel_diff, axis=1))
-            wheel_distance_move = wheel_pixel_move * self.pixel_scale
+                if len(good_wheel_new) == 0 or len(good_ground_new) == 0:
+                    print("No good features discovered, use the previous one result")
+                    wheel_distance_move = self.previous_wheel_move
+                    ground_distance_move = self.previous_ground_move
+                else:
+                    wheel_diff = good_wheel_new.reshape(-1, 2) - good_wheel_reference.reshape(-1, 2)
+                    ground_diff = good_ground_new.reshape(-1, 2) - good_ground_reference.reshape(-1, 2)
 
-            # ground part:
-            ground_diff = good_ground_new.reshape(-1, 2) - good_ground_reference.reshape(-1, 2)
-            ground_pixel_move = np.mean(np.linalg.norm(ground_diff, axis=1))
-            ground_distance_move = ground_pixel_move * self.pixel_scale
+                    # Signed motion along image x-axis.
+                    # Positive means movement to the right, negative means movement to the left.
+                    wheel_pixel_move = np.median(wheel_diff[:, 0])
+                    ground_pixel_move = np.median(ground_diff[:, 0])
+
+                    wheel_distance_move = wheel_pixel_move * self.pixel_scale
+                    ground_distance_move = ground_pixel_move * self.pixel_scale
+
+                    self.previous_wheel_move = wheel_distance_move
+                    self.previous_ground_move = ground_distance_move
 
             self.frame_count += 1
-
             return True, wheel_distance_move, ground_distance_move
 
 
@@ -118,24 +147,17 @@ class Optical_Flow:
     def slipRatio_and_currentAcceleration(self, wheel_distance, ground_distance, period, current_time, previous_ground_velocity, previous_time, radius = 0.1778):
         w = Optical_Flow.rotational_speed(wheel_distance, period, radius)
         v = Optical_Flow.ground_speed(ground_distance, period)
-        s = (radius * w - v) / v
-        slipping = s > self.slip_threshold
-        noMove = False
-        if v < self.noMove_threshold and w < (self.noMove_threshold / radius):
+        if abs(v) < self.noMove_threshold and abs(w) >= (self.noMove_threshold / radius):
+            s = radius * w
+            slipping = True
+            noMove = False
+        elif abs(v) < self.noMove_threshold and abs(w) < (self.noMove_threshold / radius):
             noMove = True
             slipping = False
             s = 0
+        else:
+            s = (radius * w - v) / v
+            slipping = abs(s) > self.slip_threshold
+            noMove = False
         a = (v - previous_ground_velocity) / (current_time - previous_time)
         return slipping, s, a, noMove, v, w
-
-    def slipRatuib_and_noAcceleration(self, wheel_distance, ground_distance, period, radius = 0.1778):
-        w = Optical_Flow.rotational_speed(wheel_distance, period, radius)
-        v = Optical_Flow.ground_speed(ground_distance, period)
-        s = (radius * w - v) / v
-        slipping = s > self.slip_threshold
-        noMove = False
-        if v < self.noMove_threshold and w < (self.noMove_threshold / radius):
-            noMove = True
-            slipping = False
-            s = 0
-        return slipping, s, noMove, v, w

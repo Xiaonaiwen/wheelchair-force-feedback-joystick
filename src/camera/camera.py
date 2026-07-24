@@ -8,6 +8,11 @@ class Camera:
             main={"size": (width, height), "format": "RGB888"},
         )        
         self.camera.configure(config)
+        self.camera.set_controls({
+            "AeEnable": False,
+            "ExposureTime": 1000,
+            "AnalogueGain": 16
+        })
 
 
     def start(self):

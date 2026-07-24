@@ -1,6 +1,8 @@
 from src.camera.camera import Camera
 from src.vision.speedCalculate_and_terrainFrameOutput import Optical_Flow
 from src.friction_model.friction_predict import predict_frame
+from src.sensor.bno085 import get_acc_and_roll
+from src.motor.motor import Left_Right_Motor, Up_Down_Motor, Grasp_Motor
 import time
 
 # Initialize, set parameters and start the camera
@@ -13,20 +15,38 @@ camera.start()
 
 flag = True
 count = 0
-previousGroundVelocity = None
-previousTime = None
+previousGroundVelocity = 0
+previousTime = 0
+previousWheelMove = 0
+previousGroundMove = 0
+
+leftMotor = Left_Right_Motor()
+graspMotor = Grasp_Motor()
+upMotor = Up_Down_Motor()
+
+# position mode to set to initial pos
+upMotor.setToInitialPosition()
+leftMotor.setToInitialPosition()
+time.sleep(1)
+
+# change to normal mode, use current to control the current position
+upMotor.changeMode()
+leftMotor.changeMode()
+graspMotor.changeMode()
+
+
 while flag:
     frame, currentTime = camera.read()
     success, wheel_distance_move, ground_distance_move = optic.lk(frame)
     if success:
-        period = currentTime - standardFrameTime
-        if previousTime is None:
-            slip, s, noMove, v, w = optic.slipRatuib_and_noAcceleration(wheel_distance_move, ground_distance_move, period)
-            a = None
-        else:
-            slip, s, a, noMove, v, w = optic.slipRatio_and_currentAcceleration(wheel_distance_move, ground_distance_move, period, currentTime, previousGroundVelocity, previousTime)
+        period = currentTime - previousTime
+        slip, s, a, noMove, v, w = optic.slipRatio_and_currentAcceleration(wheel_distance_move - previousWheelMove, ground_distance_move - previousGroundMove, period, currentTime, previousGroundVelocity, previousTime)
+        
         previousTime = currentTime
         previousGroundVelocity = v
+        previousWheelMove = wheel_distance_move
+        previousGroundMove = ground_distance_move
+
         print("period", period)
         print("slip: " , slip)
         print("s: ", s)
@@ -36,13 +56,17 @@ while flag:
         print("angular velocity: ", w)
         print()
     else:
-        standardFrameTime = currentTime
         print("updating frame")
+        previousTime = currentTime
+        previousWheelMove = 0
+        previousGroundMove = 0
         print()
+
     terrainFrame = optic.get_terrain_frame(frame)
     coefficient = predict_frame(terrainFrame)
+
     count += 1
-    if count == 1e3:
+    if count == 30:
         flag = False
 
 # stop the camera
